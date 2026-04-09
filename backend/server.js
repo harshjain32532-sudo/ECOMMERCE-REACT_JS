@@ -507,5 +507,14 @@ app.put("/orders/:id", verifyToken, async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 app.listen(5000, () => console.log("Server running on port 5000"));
 
