@@ -9,7 +9,23 @@ import crypto from "crypto";
 
 dotenv.config();
 const app = express();
-app.use(cors());
+
+// CORS: allow localhost in dev, and the deployed frontend URL in production
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+];
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (e.g., curl, Postman, same-origin)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(null, true); // Allow all for now; restrict after getting Vercel URL
+  },
+  credentials: true
+}));
+
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
