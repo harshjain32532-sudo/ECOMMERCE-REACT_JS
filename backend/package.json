@@ -1,5 +1,11 @@
 {
+  "name": "ecommerce-backend",
+  "version": "0.0.1",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/harshjain32532-sudo/ECOMMERCE-REACT_JS.git"
+  },
   "scripts": {
     "start": "node server.js"
   },

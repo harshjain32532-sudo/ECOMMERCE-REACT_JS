@@ -1,6 +1,12 @@
-# E-Commerce React.js Application
+JWT_SECRET=your_jwt_secret_key_here
+ADMIN_EMAIL=admin@store.local
+ADMIN_PASSWORD=admin123
+MONGODB_URI=mongodb://localhost:27017/ecommerce# 🛍️ E-Commerce React.js Application
 
 A full-stack e-commerce application built with React.js frontend and Express.js backend, featuring user authentication, product management, shopping cart, and admin panel.
+
+📍 **GitHub Repository**: [harshjain32532-sudo/ECOMMERCE-REACT_JS](https://github.com/harshjain32532-sudo/ECOMMERCE-REACT_JS)
+👤 **Developer**: [@harshjain32532-sudo](https://github.com/harshjain32532-sudo)
 
 ## 🚀 Features
 
