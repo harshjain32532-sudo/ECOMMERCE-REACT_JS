@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { getProducts } from "../api.js";
 import ProductModal from "../components/ProductModal.jsx";
+import DealsSection from "../components/DealsSection.jsx";
+import CategoryFilter from "../components/CategoryFilter.jsx";
+import RecentlyViewed from "../components/RecentlyViewed.jsx";
+import ProductShowcase from "../components/ProductShowcase.jsx";
 
 function Home({ addToCart, wishlist = [], onToggleWishlist }) {
     const [products, setProducts] = useState([]);
@@ -14,6 +18,10 @@ function Home({ addToCart, wishlist = [], onToggleWishlist }) {
     const [sortOption, setSortOption] = useState("name");
     const [priceRange, setPriceRange] = useState({ min: 0, max: Infinity });
     const [showFilters, setShowFilters] = useState(false);
+    const [recentlyViewed, setRecentlyViewed] = useState(() => {
+        const saved = localStorage.getItem("recentlyViewed");
+        return saved ? JSON.parse(saved) : [];
+    });
 
     useEffect(() => {
         loadProducts();
@@ -72,6 +80,10 @@ function Home({ addToCart, wishlist = [], onToggleWishlist }) {
     const handleQuickView = (product) => {
         setSelectedProduct(product);
         setIsModalOpen(true);
+        // Add to recently viewed
+        const viewed = [product, ...recentlyViewed.filter(p => p._id !== product._id)].slice(0, 10);
+        setRecentlyViewed(viewed);
+        localStorage.setItem("recentlyViewed", JSON.stringify(viewed));
     };
 
     const handleCloseModal = () => {
@@ -239,6 +251,30 @@ function Home({ addToCart, wishlist = [], onToggleWishlist }) {
                 onAddToCart={addToCart}
                 onToggleWishlist={onToggleWishlist}
                 isInWishlist={selectedProduct ? isProductInWishlist(selectedProduct._id) : false}
+            />
+
+            {/* Recently Viewed Products */}
+            {recentlyViewed.length > 0 && (
+                <RecentlyViewed
+                    products={recentlyViewed}
+                    onProductClick={handleQuickView}
+                    onAddToCart={addToCart}
+                    onToggleWishlist={onToggleWishlist}
+                    wishlist={wishlist}
+                />
+            )}
+
+            {/* Featured Deals Section */}
+            <DealsSection
+                products={products.slice(0, 8)}
+                onProductClick={handleQuickView}
+                onAddToCart={addToCart}
+            />
+
+            {/* Product Showcase */}
+            <ProductShowcase
+                products={products.slice(8, 16)}
+                onProductClick={handleQuickView}
             />
         </div>
     );

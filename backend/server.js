@@ -39,6 +39,15 @@ const userSchema = new mongoose.Schema({
   email: { type: String, unique: true, required: true, lowercase: true, trim: true },
   password: String,
   role: { type: String, enum: ["user", "admin"], default: "user" },
+  phone: String,
+  phoneVerified: { type: Boolean, default: false },
+  twoFactorEnabled: { type: Boolean, default: false },
+  twoFactorMethods: {
+    sms: { type: Boolean, default: false },
+    email: { type: Boolean, default: false },
+    authenticator: { type: Boolean, default: false },
+    backup: { type: Boolean, default: false }
+  },
   shippingAddress: {
     line1: String,
     city: String,
@@ -522,6 +531,169 @@ app.put("/orders/:id", verifyToken, async (req, res) => {
   try {
     const order = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.json(order);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// SMS & OTP Routes
+// Initialize OTP storage (in production, use Redis or database)
+const otpStorage = new Map();
+
+// Send OTP via SMS
+app.post("/otp/send", async (req, res) => {
+  try {
+    const { phone, provider = "twilio" } = req.body;
+    if (!phone) return res.status(400).json({ error: "Phone number required" });
+
+    // Validate phone number (10 digits for India)
+    const phoneRegex = /^[6-9]\d{9}$/;
+    const cleanedPhone = phone.replace(/\D/g, "");
+    if (!phoneRegex.test(cleanedPhone)) {
+      return res.status(400).json({ error: "Invalid phone number" });
+    }
+
+    // Generate OTP (6 digits)
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Store OTP with 3-minute expiry
+    const phoneKey = `otp_${cleanedPhone}`;
+    otpStorage.set(phoneKey, { otp, provider, timestamp: Date.now(), attempts: 0 });
+
+    // Clean up expired OTPs after 3 minutes
+    setTimeout(() => {
+      if (otpStorage.has(phoneKey)) {
+        otpStorage.delete(phoneKey);
+      }
+    }, 180000);
+
+    console.log(`OTP sent to ${cleanedPhone} via ${provider}: ${otp}`);
+
+    res.json({
+      message: "OTP sent successfully",
+      maskedPhone: `${cleanedPhone.slice(0, 2)}${"*".repeat(5)}${cleanedPhone.slice(7)}`,
+      provider
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Verify OTP
+app.post("/otp/verify", async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+    if (!phone || !otp) return res.status(400).json({ error: "Phone and OTP required" });
+
+    const cleanedPhone = phone.replace(/\D/g, "");
+    const phoneKey = `otp_${cleanedPhone}`;
+
+    const storedData = otpStorage.get(phoneKey);
+    if (!storedData) return res.status(400).json({ error: "OTP expired or not sent" });
+
+    // Check max attempts (3)
+    if (storedData.attempts >= 3) {
+      otpStorage.delete(phoneKey);
+      return res.status(400).json({ error: "Max verification attempts exceeded" });
+    }
+
+    if (storedData.otp !== otp.toString()) {
+      storedData.attempts++;
+      return res.status(400).json({ error: `Invalid OTP. ${3 - storedData.attempts} attempts remaining` });
+    }
+
+    // OTP verified successfully
+    otpStorage.delete(phoneKey);
+
+    res.json({
+      message: "Phone verified successfully",
+      phone: cleanedPhone,
+      verified: true
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Enable 2FA method
+app.post("/user/2fa/enable", verifyToken, async (req, res) => {
+  try {
+    const { method } = req.body; // method: sms, email, authenticator, backup
+    if (!["sms", "email", "authenticator", "backup"].includes(method)) {
+      return res.status(400).json({ error: "Invalid 2FA method" });
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    user.twoFactorMethods[method] = true;
+    user.twoFactorEnabled = true;
+    await user.save();
+
+    res.json({ message: `2FA ${method} enabled`, twoFactorEnabled: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Disable 2FA method
+app.post("/user/2fa/disable", verifyToken, async (req, res) => {
+  try {
+    const { method } = req.body;
+    if (!["sms", "email", "authenticator", "backup"].includes(method)) {
+      return res.status(400).json({ error: "Invalid 2FA method" });
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    user.twoFactorMethods[method] = false;
+
+    // Check if any method is still enabled
+    const anyMethodEnabled = Object.values(user.twoFactorMethods).some(v => v);
+    user.twoFactorEnabled = anyMethodEnabled;
+
+    await user.save();
+
+    res.json({ message: `2FA ${method} disabled`, twoFactorEnabled: user.twoFactorEnabled });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get 2FA status
+app.get("/user/2fa/status", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select("phone phoneVerified twoFactorEnabled twoFactorMethods");
+    res.json({
+      phone: user.phone,
+      phoneVerified: user.phoneVerified,
+      twoFactorEnabled: user.twoFactorEnabled,
+      methods: user.twoFactorMethods
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update phone number
+app.post("/user/phone/update", verifyToken, async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: "Phone number required" });
+
+    const phoneRegex = /^[6-9]\d{9}$/;
+    const cleanedPhone = phone.replace(/\D/g, "");
+    if (!phoneRegex.test(cleanedPhone)) {
+      return res.status(400).json({ error: "Invalid phone number" });
+    }
+
+    const user = await User.findById(req.userId);
+    user.phone = cleanedPhone;
+    user.phoneVerified = false;
+    await user.save();
+
+    res.json({ message: "Phone number updated", phone: cleanedPhone, phoneVerified: false });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

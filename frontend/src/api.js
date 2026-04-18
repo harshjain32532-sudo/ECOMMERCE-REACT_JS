@@ -79,3 +79,23 @@ export const createOrder = (data) => api.post("/orders", data);
 export const updateOrder = (id, data) => api.put(`/orders/${id}`, data);
 
 export const getAdminStats = () => api.get("/admin/stats");
+
+// OTP & SMS Verification
+export const sendOTP = (phone, provider = "twilio") =>
+    api.post("/otp/send", { phone, provider });
+
+export const verifyOTP = (phone, otp) =>
+    api.post("/otp/verify", { phone, otp });
+
+// 2FA Methods
+export const enable2FA = (method) =>
+    api.post("/user/2fa/enable", { method });
+
+export const disable2FA = (method) =>
+    api.post("/user/2fa/disable", { method });
+
+export const get2FAStatus = () =>
+    api.get("/user/2fa/status");
+
+export const updatePhoneNumber = (phone) =>
+    api.post("/user/phone/update", { phone });
