@@ -279,8 +279,10 @@ const styles = {
         border: "2px solid #e0e0e0",
         borderRadius: 12,
         background: "#fff",
+        color: "#333",
         transition: "all 0.3s ease",
         boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
+        outline: "none",
     },
     filterToggleBtn: {
         padding: "12px 24px",
@@ -318,9 +320,11 @@ const styles = {
         borderRadius: 8,
         border: "2px solid #e0e0e0",
         background: "#fff",
+        color: "#333",
         cursor: "pointer",
         fontSize: 14,
         transition: "all 0.3s ease",
+        outline: "none",
     },
     priceInputGroup: {
         display: "flex",
@@ -333,7 +337,9 @@ const styles = {
         borderRadius: 8,
         border: "2px solid #e0e0e0",
         fontSize: 14,
+        color: "#333",
         transition: "all 0.3s ease",
+        outline: "none",
     },
     priceSeparator: {
         color: "#999",
