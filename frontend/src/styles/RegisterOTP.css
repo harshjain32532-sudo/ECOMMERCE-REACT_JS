@@ -1,0 +1,370 @@
+/* Register OTP Page Styles */
+
+.register-otp-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    padding: 20px;
+}
+
+.register-otp-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-width: 500px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    padding: 40px 30px;
+}
+
+/* Header */
+.register-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.register-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #333;
+    margin: 0 0 10px 0;
+}
+
+.register-header p {
+    font-size: 14px;
+    color: #666;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* Step Indicator */
+.step-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 30px 0;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.step-number {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background-color: #e0e0e0;
+    color: #999;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.step.active .step-number {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.step-label {
+    font-size: 12px;
+    color: #999;
+    font-weight: 500;
+    text-align: center;
+}
+
+.step.active .step-label {
+    color: #667eea;
+    font-weight: 600;
+}
+
+.step-divider {
+    flex: 1;
+    height: 2px;
+    background-color: #e0e0e0;
+    margin: 0 10px;
+}
+
+/* Form Group */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.form-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
+.required {
+    color: #e74c3c;
+}
+
+.optional {
+    color: #999;
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.form-input {
+    padding: 12px 14px;
+    font-size: 14px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #667eea;
+    background-color: #f9f9f9;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-input:disabled {
+    background-color: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.form-error {
+    font-size: 12px;
+    color: #e74c3c;
+    margin-top: 4px;
+}
+
+/* Terms Checkbox */
+.terms-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 20px 0;
+    padding: 12px;
+    background-color: #f9f9f9;
+    border-radius: 6px;
+}
+
+.terms-checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    cursor: pointer;
+    accent-color: #667eea;
+}
+
+.terms-checkbox label {
+    font-size: 12px;
+    color: #555;
+    cursor: pointer;
+    flex: 1;
+}
+
+.terms-checkbox .link {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.terms-checkbox .link:hover {
+    color: #5568d3;
+    text-decoration: underline;
+}
+
+/* Submit Button */
+.submit-button {
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.submit-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.submit-button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.submit-button:disabled {
+    background: linear-gradient(135deg, #ccc 0%, #999 100%);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Register Footer */
+.register-footer {
+    text-align: center;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+
+.register-footer p {
+    font-size: 14px;
+    color: #666;
+    margin: 0;
+}
+
+.register-footer .link {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.register-footer .link:hover {
+    color: #5568d3;
+}
+
+/* Registration Benefits */
+.registration-benefits {
+    background-color: #f0f4ff;
+    border-left: 4px solid #667eea;
+    padding: 16px;
+    border-radius: 6px;
+    margin-top: 30px;
+}
+
+.registration-benefits h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    margin: 0 0 12px 0;
+}
+
+.registration-benefits ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.registration-benefits li {
+    font-size: 13px;
+    color: #555;
+}
+
+/* Alerts */
+.alert {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    font-weight: 500;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.alert-error {
+    background-color: #ffebee;
+    color: #c62828;
+    border-left: 4px solid #c62828;
+}
+
+.alert-icon {
+    font-size: 18px;
+}
+
+/* Security Banner */
+.security-banner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: 40px;
+    padding: 12px 20px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.banner-icon {
+    font-size: 18px;
+}
+
+.security-banner p {
+    font-size: 12px;
+    color: #666;
+    margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+    .register-otp-container {
+        padding: 30px 20px;
+    }
+
+    .register-header h1 {
+        font-size: 24px;
+    }
+
+    .register-header p {
+        font-size: 13px;
+    }
+
+    .step-indicator {
+        margin: 20px 0;
+        padding-bottom: 15px;
+    }
+
+    .step-divider {
+        margin: 0 5px;
+    }
+
+    .step-label {
+        font-size: 11px;
+    }
+
+    .registration-benefits {
+        margin-top: 20px;
+    }
+
+    .security-banner {
+        flex-direction: column;
+        text-align: center;
+        margin-top: 30px;
+    }
+}

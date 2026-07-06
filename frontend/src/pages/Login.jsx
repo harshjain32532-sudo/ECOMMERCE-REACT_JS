@@ -1,126 +1,94 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { login as loginAPI } from "../api.js";
+import { login as apiLogin } from "../api.js";
+import "../styles/Auth.css";
 
 function Login({ onLogin }) {
-    const [credentials, setCredentials] = useState({ email: "", password: "" });
+    const [d, setD] = useState({ email: "", password: "" });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const navigate = useNavigate();
 
     const handleLogin = async () => {
-        if (!credentials.email || !credentials.password) {
-            setError("Please fill all fields");
-            return;
-        }
-
-        setLoading(true);
-        setError("");
         try {
-            const res = await loginAPI(credentials.email, credentials.password);
+            setError("");
+            setLoading(true);
+            const res = await apiLogin(d.email, d.password);
             localStorage.setItem("token", res.data.token);
-            const role = res.data.user?.role || "user";
-            if (typeof onLogin === "function") onLogin(res.data.token, role);
-            navigate(role === "admin" ? "/admin" : "/");
+            if (res.data.role) {
+                localStorage.setItem("role", res.data.role);
+            }
+            localStorage.setItem("email", res.data.user?.email || d.email);
+            if (typeof onLogin === "function") {
+                onLogin(res.data.token, res.data.role || "user");
+            }
+            alert("Logged in successfully");
+            navigate("/");
         } catch (err) {
-            setError(err.response?.data?.error || "Login failed");
+            setError(err.response?.data?.error || err.response?.data?.message || err.message || "Login failed");
         } finally {
             setLoading(false);
         }
     };
 
+    const handleKeyPress = (e) => {
+        if (e.key === "Enter") {
+            handleLogin();
+        }
+    };
+
     return (
-        <div style={styles.container}>
-            <div style={styles.card}>
-                <h1>Login</h1>
-                {error && <div style={styles.error}>{error}</div>}
-                <div style={styles.form}>
-                    <input
-                        type="email"
-                        placeholder="Email"
-                        value={credentials.email}
-                        onChange={e => setCredentials({ ...credentials, email: e.target.value })}
-                        style={styles.input}
-                    />
-                    <input
-                        type="password"
-                        placeholder="Password"
-                        value={credentials.password}
-                        onChange={e => setCredentials({ ...credentials, password: e.target.value })}
-                        style={styles.input}
-                    />
-                    <button
-                        onClick={handleLogin}
-                        disabled={loading}
-                        style={{ ...styles.button, opacity: loading ? 0.6 : 1 }}
-                    >
-                        {loading ? "Logging in..." : "Login"}
-                    </button>
+        <div className="auth-container">
+            <div className="auth-wrapper">
+                <div className="auth-card">
+                    <div className="auth-header">
+                        <h1>Welcome Back</h1>
+                        <p>Sign in to your account</p>
+                    </div>
+
+                    <form className="auth-form" onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
+                        <div className="form-group">
+                            <label htmlFor="email">Email Address</label>
+                            <input
+                                id="email"
+                                type="email"
+                                placeholder="your.email@example.com"
+                                value={d.email}
+                                onChange={e => setD({ ...d, email: e.target.value })}
+                                onKeyPress={handleKeyPress}
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="password">Password</label>
+                            <input
+                                id="password"
+                                type="password"
+                                placeholder="Enter your password"
+                                value={d.password}
+                                onChange={e => setD({ ...d, password: e.target.value })}
+                                onKeyPress={handleKeyPress}
+                            />
+                        </div>
+
+                        {error && <div className="error-message">{error}</div>}
+
+                        <button
+                            type="submit"
+                            className="auth-button"
+                            disabled={loading}
+                        >
+                            {loading ? "Signing in..." : "Sign In"}
+                        </button>
+                    </form>
+
+                    <div className="auth-footer">
+                        <p>Don't have an account? <Link to="/register">Create one</Link></p>
+                        <Link to="/forgot-password">Forgot password?</Link>
+                    </div>
                 </div>
-                <p style={styles.footer}>                    <Link to="/forgot-password" style={styles.link}>Forgot password?</Link>
-                </p>
-                <p style={styles.footer}>                    Don't have an account? <Link to="/register" style={styles.link}>Register</Link>
-                </p>
             </div>
         </div>
-    );
+    )
 }
-
-const styles = {
-    container: {
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        minHeight: "calc(100vh - 80px)",
-        background: "#f5f5f5",
-    },
-    card: {
-        width: "100%",
-        maxWidth: 400,
-        padding: 32,
-        background: "#fff",
-        borderRadius: 8,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-    },
-    form: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-        marginTop: 24,
-    },
-    input: {
-        padding: 12,
-        border: "1px solid #ddd",
-        borderRadius: 4,
-        fontSize: 14,
-    },
-    button: {
-        padding: 12,
-        background: "#3498db",
-        color: "#fff",
-        border: "none",
-        borderRadius: 4,
-        cursor: "pointer",
-        fontSize: 16,
-        fontWeight: "bold",
-    },
-    error: {
-        padding: 12,
-        background: "#fadbd8",
-        color: "#c0392b",
-        borderRadius: 4,
-        marginBottom: 16,
-    },
-    footer: {
-        textAlign: "center",
-        marginTop: 16,
-        fontSize: 14,
-        color: "#666",
-    },
-    link: {
-        color: "#3498db",
-        textDecoration: "none",
-    },
-};
-
 export default Login;

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { forgotPassword } from "../api.js";
+import "../styles/Auth.css";
 
 function ForgotPassword() {
     const [email, setEmail] = useState("");
@@ -34,130 +35,62 @@ function ForgotPassword() {
         }
     };
 
+    const handleKeyPress = (e) => {
+        if (e.key === "Enter") {
+            handleSubmit();
+        }
+    };
+
     return (
-        <div style={styles.container}>
-            <div style={styles.card}>
-                <h1>Forgot Password</h1>
-                {error && <div style={styles.error}>{error}</div>}
-                {message && <div style={styles.success}>{message}</div>}
-                {resetUrl && (
-                    <div style={styles.linkBox}>
-                        <p style={styles.linkLabel}>Reset link:</p>
-                        <a href={resetUrl} target="_blank" rel="noreferrer" style={styles.link}>
-                            {resetUrl}
-                        </a>
+        <div className="auth-container">
+            <div className="auth-wrapper">
+                <div className="auth-card">
+                    <div className="auth-header">
+                        <h1>Forgot Password?</h1>
+                        <p>We'll help you reset your password</p>
                     </div>
-                )}
-                <div style={styles.form}>
-                    <input
-                        type="email"
-                        placeholder="Email"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        style={styles.input}
-                    />
-                    <button
-                        onClick={handleSubmit}
-                        disabled={loading}
-                        style={{ ...styles.button, opacity: loading ? 0.6 : 1 }}
-                    >
-                        {loading ? "Sending..." : "Send reset link"}
-                    </button>
-                    <button
-                        onClick={() => navigate("/login")}
-                        style={styles.secondaryButton}
-                    >
-                        Back to login
-                    </button>
+
+                    <form className="auth-form" onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+                        <div className="form-group">
+                            <label htmlFor="email">Email Address</label>
+                            <input
+                                id="email"
+                                type="email"
+                                placeholder="your.email@example.com"
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                                onKeyPress={handleKeyPress}
+                            />
+                        </div>
+
+                        {error && <div className="error-message">{error}</div>}
+                        {message && <div className="success-message">{message}</div>}
+
+                        {resetUrl && (
+                            <div className="reset-link-box">
+                                <p className="reset-link-label">Reset Link:</p>
+                                <a href={resetUrl} target="_blank" rel="noreferrer" className="reset-link-url">
+                                    {resetUrl}
+                                </a>
+                            </div>
+                        )}
+
+                        <button
+                            type="submit"
+                            className="auth-button"
+                            disabled={loading}
+                        >
+                            {loading ? "Sending..." : "Send Reset Link"}
+                        </button>
+                    </form>
+
+                    <div className="auth-footer">
+                        <p><Link to="/login">← Back to Login</Link></p>
+                    </div>
                 </div>
             </div>
         </div>
     );
 }
-
-const styles = {
-    container: {
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        minHeight: "calc(100vh - 80px)",
-        background: "#f5f5f5",
-    },
-    card: {
-        width: "100%",
-        maxWidth: 400,
-        padding: 32,
-        background: "#fff",
-        borderRadius: 8,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-    },
-    form: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-        marginTop: 24,
-    },
-    input: {
-        padding: 12,
-        border: "1px solid #ddd",
-        borderRadius: 4,
-        fontSize: 14,
-    },
-    button: {
-        padding: 12,
-        background: "#3498db",
-        color: "#fff",
-        border: "none",
-        borderRadius: 4,
-        cursor: "pointer",
-        fontSize: 16,
-        fontWeight: "bold",
-    },
-    secondaryButton: {
-        padding: 12,
-        background: "#ecf0f1",
-        color: "#333",
-        border: "none",
-        borderRadius: 4,
-        cursor: "pointer",
-        fontSize: 16,
-        fontWeight: "bold",
-    },
-    error: {
-        padding: 12,
-        background: "#fadbd8",
-        color: "#c0392b",
-        borderRadius: 4,
-        marginBottom: 16,
-    },
-    success: {
-        padding: 12,
-        background: "#d4edda",
-        color: "#155724",
-        borderRadius: 4,
-        marginBottom: 16,
-    },
-    linkBox: {
-        padding: 12,
-        background: "#e9f7ef",
-        border: "1px solid #c3e6cb",
-        borderRadius: 4,
-        marginBottom: 16,
-        wordBreak: "break-word",
-    },
-    linkLabel: {
-        margin: 0,
-        fontSize: 14,
-        color: "#155724",
-        fontWeight: 600,
-    },
-    link: {
-        display: "block",
-        marginTop: 6,
-        color: "#0b6e45",
-        textDecoration: "underline",
-        fontSize: 14,
-    },
-};
 
 export default ForgotPassword;

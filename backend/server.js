@@ -6,9 +6,29 @@ import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import nodemailer from "nodemailer";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import { getOrderEmailTemplate, getStatusChangeMessage, formatOrderForNotification } from "./services/orderTrackingService.js";
+import paymentRoutes from "./routes/payment.js";
+import emailOTPRoutes from "./routes/emailOTP.js";
+import authRoutes from "./routes/auth.js";
+import User from "./models/user.js";
 
 dotenv.config();
 const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:3000",
+      ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+    ],
+    credentials: true,
+    methods: ["GET", "POST"]
+  }
+});
 
 // CORS: allow localhost in dev, and the deployed frontend URL in production
 const allowedOrigins = [
@@ -34,48 +54,29 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase();
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const normalizeEmail = (email) => (email || "").trim().toLowerCase();
 
-const userSchema = new mongoose.Schema({
-  name: { type: String, default: "" },
-  email: { type: String, unique: true, required: true, lowercase: true, trim: true },
-  password: String,
-  role: { type: String, enum: ["user", "admin"], default: "user" },
-  phone: String,
-  phoneVerified: { type: Boolean, default: false },
-  twoFactorEnabled: { type: Boolean, default: false },
-  twoFactorMethods: {
-    sms: { type: Boolean, default: false },
-    email: { type: Boolean, default: false },
-    authenticator: { type: Boolean, default: false },
-    backup: { type: Boolean, default: false }
+// Email Configuration
+const emailTransporter = nodemailer.createTransport({
+  service: process.env.EMAIL_SERVICE || "gmail",
+  auth: {
+    user: process.env.EMAIL_USER || "",
+    pass: process.env.EMAIL_PASSWORD || "",
   },
-  shippingAddress: {
-    line1: String,
-    city: String,
-    state: String,
-    zip: String,
-    country: String,
-  },
-  cart: [
-    {
-      productId: String,
-      name: String,
-      price: Number,
-      image: String,
-      quantity: Number,
-    }
-  ],
-  wishlist: [
-    {
-      productId: String,
-      name: String,
-      price: Number,
-      image: String,
-    }
-  ],
-  resetPasswordToken: String,
-  resetPasswordExpires: Date,
-  createdAt: { type: Date, default: Date.now }
 });
+
+// Send email utility function
+const sendEmail = async (to, subject, html) => {
+  try {
+    await emailTransporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to,
+      subject,
+      html,
+    });
+    console.log(`Email sent to ${to}`);
+  } catch (error) {
+    console.error("Failed to send email:", error.message);
+  }
+};
 
 const productSchema = new mongoose.Schema({
   name: String,
@@ -83,6 +84,10 @@ const productSchema = new mongoose.Schema({
   image: String,
   description: String,
   stock: { type: Number, default: 10 },
+  rating: { type: Number, default: 0 },
+  reviewCount: { type: Number, default: 0 },
+  category: String,
+  tags: [String],
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -90,13 +95,72 @@ const orderSchema = new mongoose.Schema({
   userId: String,
   items: Array,
   total: Number,
-  status: { type: String, default: "pending" },
+  userEmail: String,
+  status: {
+    type: String,
+    enum: ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"],
+    default: "pending"
+  },
+  statusHistory: [
+    {
+      status: String,
+      timestamp: { type: Date, default: Date.now },
+      message: String,
+    }
+  ],
+  shippingAddress: {
+    name: String,
+    email: String,
+    phone: String,
+    line1: String,
+    city: String,
+    state: String,
+    zip: String,
+    country: String,
+  },
+  trackingNumber: String,
+  estimatedDelivery: Date,
+  paymentMethod: { type: String, default: "card" },
+  paymentStatus: { type: String, default: "pending", enum: ["pending", "completed", "failed"] },
   createdAt: { type: Date, default: Date.now }
 });
 
-const User = mongoose.model("User", userSchema);
+const featuredProductSchema = new mongoose.Schema({
+  productId: String,
+  title: String,
+  description: String,
+  image: String,
+  displayOrder: { type: Number, default: 0 },
+  isActive: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const couponSchema = new mongoose.Schema({
+  code: { type: String, unique: true, required: true, uppercase: true, trim: true },
+  description: String,
+  discountType: { type: String, enum: ["percentage", "fixed"], default: "percentage" },
+  discountValue: { type: Number, required: true },
+  minPurchaseAmount: { type: Number, default: 0 },
+  maxDiscountAmount: Number,
+  usageLimit: Number,
+  usageCount: { type: Number, default: 0 },
+  expiryDate: Date,
+  isActive: { type: Boolean, default: true },
+  applicableCategories: [String],
+  applicableProducts: [String],
+  createdAt: { type: Date, default: Date.now },
+  usedBy: [
+    {
+      userId: String,
+      usedAt: Date,
+    }
+  ]
+});
+
 const Product = mongoose.model("Product", productSchema);
 const Order = mongoose.model("Order", orderSchema);
+const FeaturedProduct = mongoose.model("FeaturedProduct", featuredProductSchema);
+const Coupon = mongoose.model("Coupon", couponSchema);
 
 async function createAdminIfNeeded() {
   try {
@@ -155,12 +219,23 @@ const verifyToken = (req, res, next) => {
 
 const verifyAdmin = async (req, res, next) => {
   try {
+    if (!req.userId) {
+      return res.status(401).json({ error: "User ID not found in token" });
+    }
+
     const user = await User.findById(req.userId);
-    if (!user || user.role !== "admin") {
+    if (!user) {
+      return res.status(404).json({ error: "User not found in database" });
+    }
+
+    if (user.role !== "admin") {
+      console.log(`Access denied for user ${req.userId} with role: ${user.role}`);
       return res.status(403).json({ error: "Admin access required" });
     }
+
     next();
   } catch (err) {
+    console.error("Admin verification error:", err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -200,7 +275,7 @@ app.post("/login", async (req, res) => {
     if (!valid) return res.status(400).json({ error: "Wrong password" });
 
     const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, user: { id: user._id, email: user.email, name: user.name, role: user.role } });
+    res.json({ token, role: user.role, user: { id: user._id, email: user.email, name: user.name, role: user.role } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -243,8 +318,17 @@ app.get("/user/profile", verifyToken, async (req, res) => {
 
 app.put("/user/profile", verifyToken, async (req, res) => {
   try {
-    const { name, email, shippingAddress } = req.body;
-    const update = { name, shippingAddress };
+    const { name, email, shippingAddress, addresses } = req.body;
+    const update = { name };
+
+    if (shippingAddress) {
+      update.shippingAddress = shippingAddress;
+    }
+
+    if (addresses && Array.isArray(addresses)) {
+      update.addresses = addresses;
+    }
+
     if (email) {
       const normalizedEmail = normalizeEmail(email);
       const existing = await User.findOne({ email: normalizedEmail, _id: { $ne: req.userId } });
@@ -348,8 +432,22 @@ app.get("/admin/stats", verifyToken, verifyAdmin, async (req, res) => {
 
 app.get("/admin/customers", verifyToken, verifyAdmin, async (req, res) => {
   try {
-    const customers = await User.find({ role: "user" }).select("name email shippingAddress createdAt").sort({ createdAt: -1 });
-    res.json(customers);
+    const customers = await User.find({ role: "user" }).select("name email phone shippingAddress createdAt").sort({ createdAt: -1 }).lean();
+
+    // Enrich with order statistics
+    const enrichedCustomers = await Promise.all(customers.map(async (customer) => {
+      const orders = await Order.find({ userId: customer._id }).lean();
+      const totalOrders = orders.length;
+      const totalSpent = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+
+      return {
+        ...customer,
+        totalOrders,
+        totalSpent
+      };
+    }));
+
+    res.json(enrichedCustomers);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -368,6 +466,178 @@ app.post("/admin/customers", verifyToken, verifyAdmin, async (req, res) => {
     const customer = new User({ name: name || "", email: normalizedEmail, password: hash, role: "user" });
     await customer.save();
     res.json({ message: "Customer created", customer: { id: customer._id, email: customer.email, name: customer.name } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Get all orders with customer details
+app.get("/admin/orders", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const orders = await Order.find()
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Enrich with customer info
+    const enrichedOrders = await Promise.all(orders.map(async (order) => {
+      const customer = await User.findById(order.userId).select("name email phone").lean();
+      return {
+        ...order,
+        customerName: customer?.name || "Unknown",
+        email: customer?.email || "N/A"
+      };
+    }));
+
+    res.json(enrichedOrders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Get all product orders (with product details)
+app.get("/admin/product-orders", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const orders = await Order.find()
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Flatten orders into individual product orders
+    const productOrders = [];
+    for (const order of orders) {
+      const customer = await User.findById(order.userId).select("name email phone").lean();
+
+      // Each item in the order becomes a product order entry
+      order.items.forEach((item, index) => {
+        productOrders.push({
+          orderId: order._id,
+          orderNumber: order._id.toString().slice(-8).toUpperCase(),
+          productId: item.id || item._id,
+          productName: item.name,
+          productPrice: item.price,
+          quantity: item.quantity || 1,
+          itemTotal: (item.price || 0) * (item.quantity || 1),
+          totalOrderPrice: order.total,
+          status: order.status,
+          customerName: customer?.name || "Unknown",
+          email: customer?.email || "N/A",
+          phone: customer?.phone || "N/A",
+          shippingAddress: order.shippingAddress,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+          estimatedDelivery: order.estimatedDelivery,
+          trackingNumber: order.trackingNumber || "N/A"
+        });
+      });
+    }
+
+    res.json(productOrders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Update order status
+app.put("/admin/orders/:orderId/status", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status, message } = req.body;
+
+    if (!status) return res.status(400).json({ error: "Status required" });
+
+    const validStatuses = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    const order = await Order.findByIdAndUpdate(
+      orderId,
+      {
+        status,
+        updatedAt: Date.now()
+      },
+      { new: true }
+    );
+
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    // Add to status history
+    order.statusHistory.push({
+      status,
+      timestamp: Date.now(),
+      message: message || `Order status changed to ${status}`
+    });
+    await order.save();
+
+    // Emit real-time update via socket.io
+    io.emit("orderStatusUpdated", {
+      orderId: order._id,
+      status: order.status,
+      customerEmail: order.userEmail,
+      message: message || `Order status changed to ${status}`
+    });
+
+    res.json({ message: "Order status updated", order });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Get delivery tracking information
+app.get("/admin/delivery-tracking", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const orders = await Order.find({ status: "delivered" })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    // Create delivery tracking records
+    const deliveryTracking = [];
+    for (const order of orders) {
+      const customer = await User.findById(order.userId).select("name email phone").lean();
+
+      order.items.forEach((item, idx) => {
+        deliveryTracking.push({
+          orderId: order._id,
+          orderNumber: order._id.toString().slice(-8).toUpperCase(),
+          productId: item.id || item._id,
+          productName: item.name,
+          quantity: item.quantity || 1,
+          price: item.price,
+          customerName: customer?.name || "Unknown",
+          email: customer?.email || "N/A",
+          phone: customer?.phone || "N/A",
+          deliveredAt: order.updatedAt,
+          estimatedDelivery: order.estimatedDelivery,
+          trackingNumber: order.trackingNumber || "N/A",
+          shippingAddress: order.shippingAddress,
+          status: order.status
+        });
+      });
+    }
+
+    res.json(deliveryTracking);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Update delivery date
+app.put("/admin/delivery/:orderId", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { deliveredAt, trackingNumber } = req.body;
+
+    const order = await Order.findByIdAndUpdate(
+      orderId,
+      {
+        updatedAt: deliveredAt || Date.now(),
+        ...(trackingNumber && { trackingNumber })
+      },
+      { new: true }
+    );
+
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    res.json({ message: "Delivery information updated", order });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -497,6 +767,53 @@ app.delete("/products/:id", verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
+// Featured Products Routes
+app.get("/featured-products", async (req, res) => {
+  try {
+    const featured = await FeaturedProduct.find({ isActive: true }).sort({ displayOrder: 1 });
+    res.json(featured);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/featured-products/all", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const featured = await FeaturedProduct.find().sort({ displayOrder: 1 });
+    res.json(featured);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/featured-products", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const featured = new FeaturedProduct(req.body);
+    await featured.save();
+    res.status(201).json(featured);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/featured-products/:id", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const featured = await FeaturedProduct.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json(featured);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/featured-products/:id", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    await FeaturedProduct.findByIdAndDelete(req.params.id);
+    res.json({ message: "Featured product deleted" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Order Routes
 app.post("/orders", verifyToken, async (req, res) => {
   try {
@@ -529,7 +846,67 @@ app.get("/orders/:id", verifyToken, async (req, res) => {
 
 app.put("/orders/:id", verifyToken, async (req, res) => {
   try {
-    const order = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const orderId = req.params.id;
+    const updateData = req.body;
+    const oldOrder = await Order.findById(orderId);
+
+    if (!oldOrder) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Authorization check - only admin or order owner can update
+    if (oldOrder.userId !== req.userId) {
+      const user = await User.findById(req.userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+    }
+
+    // Handle status updates with notifications
+    if (updateData.status && updateData.status !== oldOrder.status) {
+      const oldStatus = oldOrder.status;
+      const newStatus = updateData.status;
+
+      // Add to status history
+      if (!updateData.statusHistory) {
+        updateData.statusHistory = oldOrder.statusHistory || [];
+      }
+
+      updateData.statusHistory.push({
+        status: newStatus,
+        timestamp: new Date(),
+        message: getStatusChangeMessage(oldStatus, newStatus)
+      });
+
+      // Send email notification
+      const emailTemplate = getOrderEmailTemplate(newStatus, { ...oldOrder.toObject(), ...updateData });
+      if (emailTemplate && oldOrder.userEmail) {
+        await sendEmail(
+          oldOrder.userEmail,
+          emailTemplate.subject,
+          emailTemplate.html
+        );
+      }
+
+      // Broadcast via WebSocket to all connected clients
+      const notificationData = formatOrderForNotification({ ...oldOrder.toObject(), ...updateData });
+      io.emit('order:updated', {
+        orderId,
+        userId: oldOrder.userId,
+        oldStatus,
+        newStatus,
+        timestamp: new Date(),
+        order: notificationData,
+        message: getStatusChangeMessage(oldStatus, newStatus)
+      });
+
+      // Also emit to a room for this specific user
+      io.to(`user:${oldOrder.userId}`).emit('user:order:updated', notificationData);
+
+      console.log(`Order ${orderId} status changed: ${oldStatus} -> ${newStatus}`);
+    }
+
+    const order = await Order.findByIdAndUpdate(orderId, updateData, { new: true });
     res.json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -699,6 +1076,415 @@ app.post("/user/phone/update", verifyToken, async (req, res) => {
   }
 });
 
+// ========== EMAIL PREFERENCES ENDPOINTS ==========
+// Get email preferences
+app.get("/user/email-preferences", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select("emailPreferences");
+    res.json(user?.emailPreferences || {
+      marketing: true,
+      orderUpdates: true,
+      promotions: true,
+      reviews: false,
+      newsletter: true,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update email preferences
+app.put("/user/email-preferences", verifyToken, async (req, res) => {
+  try {
+    const { marketing, orderUpdates, promotions, reviews, newsletter } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      {
+        emailPreferences: {
+          marketing: marketing !== undefined ? marketing : true,
+          orderUpdates: orderUpdates !== undefined ? orderUpdates : true,
+          promotions: promotions !== undefined ? promotions : true,
+          reviews: reviews !== undefined ? reviews : false,
+          newsletter: newsletter !== undefined ? newsletter : true,
+        }
+      },
+      { new: true }
+    ).select("emailPreferences");
+    res.json(user.emailPreferences);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== COUPON ENDPOINTS ==========
+// Apply coupon to order
+app.post("/coupons/apply", verifyToken, async (req, res) => {
+  try {
+    const { code, cartTotal } = req.body;
+    if (!code) return res.status(400).json({ error: "Coupon code required" });
+
+    const coupon = await Coupon.findOne({ code: code.toUpperCase(), isActive: true });
+    if (!coupon) return res.status(400).json({ error: "Invalid or inactive coupon" });
+
+    // Check expiry date
+    if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate)) {
+      return res.status(400).json({ error: "Coupon has expired" });
+    }
+
+    // Check usage limit
+    if (coupon.usageLimit && coupon.usageCount >= coupon.usageLimit) {
+      return res.status(400).json({ error: "Coupon usage limit reached" });
+    }
+
+    // Check minimum purchase amount
+    if (cartTotal < coupon.minPurchaseAmount) {
+      return res.status(400).json({
+        error: `Minimum purchase of ₹${coupon.minPurchaseAmount} required for this coupon`
+      });
+    }
+
+    // Calculate discount
+    let discountAmount = 0;
+    if (coupon.discountType === "percentage") {
+      discountAmount = (cartTotal * coupon.discountValue) / 100;
+      if (coupon.maxDiscountAmount) {
+        discountAmount = Math.min(discountAmount, coupon.maxDiscountAmount);
+      }
+    } else {
+      discountAmount = coupon.discountValue;
+    }
+
+    res.json({
+      valid: true,
+      coupon: {
+        code: coupon.code,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        discountAmount: Math.round(discountAmount * 100) / 100,
+        finalTotal: Math.max(0, cartTotal - discountAmount)
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get all active coupons
+app.get("/coupons", async (req, res) => {
+  try {
+    const coupons = await Coupon.find({
+      isActive: true,
+      $or: [
+        { expiryDate: { $gt: new Date() } },
+        { expiryDate: { $exists: false } }
+      ]
+    }).select("code description discountType discountValue minPurchaseAmount expiryDate");
+    res.json(coupons);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Create coupon
+app.post("/coupons", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const coupon = new Coupon(req.body);
+    await coupon.save();
+    res.status(201).json(coupon);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== BROWSING HISTORY & RECOMMENDATIONS ==========
+// Track product view
+app.post("/products/:id/view", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user.browsingHistory) user.browsingHistory = [];
+
+    // Remove if exists and add to top (for recency)
+    user.browsingHistory = user.browsingHistory.filter(h => h.productId !== req.params.id);
+    user.browsingHistory.unshift({
+      productId: req.params.id,
+      viewedAt: new Date()
+    });
+
+    // Keep only last 50 views
+    if (user.browsingHistory.length > 50) {
+      user.browsingHistory = user.browsingHistory.slice(0, 50);
+    }
+
+    await user.save();
+    res.json({ message: "View tracked" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get smart recommendations
+app.get("/recommendations", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    const recommendations = {
+      similar: [],
+      browsing: [],
+      category: []
+    };
+
+    // Get similar products based on recent views
+    if (user.browsingHistory && user.browsingHistory.length > 0) {
+      const recentProducts = await Product.find({
+        _id: { $in: user.browsingHistory.slice(0, 5).map(h => h.productId) }
+      });
+
+      if (recentProducts.length > 0) {
+        const categories = recentProducts.map(p => p.category).filter(Boolean);
+        const tags = recentProducts.flatMap(p => p.tags || []);
+
+        // Find similar products
+        recommendations.similar = await Product.find({
+          $or: [
+            { category: { $in: categories } },
+            { tags: { $in: tags } }
+          ],
+          _id: { $nin: user.browsingHistory.map(h => h.productId) }
+        }).limit(5);
+
+        // Category-based recommendations
+        recommendations.category = await Product.find({
+          category: { $in: categories },
+          _id: { $nin: user.browsingHistory.map(h => h.productId) }
+        }).sort({ rating: -1 }).limit(3);
+      }
+    }
+
+    // Popular products for new users
+    recommendations.browsing = await Product.find()
+      .sort({ reviewCount: -1 })
+      .limit(5);
+
+    res.json(recommendations);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get browsing history
+app.get("/browsing-history", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).populate({
+      path: 'browsingHistory.productId',
+      model: 'Product'
+    });
+    res.json(user.browsingHistory || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== SEARCH WITH FILTERS ==========
+// Enhanced search with filters
+app.get("/products/search", async (req, res) => {
+  try {
+    const {
+      query,
+      category,
+      minPrice,
+      maxPrice,
+      minRating,
+      tags,
+      sort = "-createdAt"
+    } = req.query;
+
+    let filter = {};
+
+    // Text search
+    if (query) {
+      filter.$or = [
+        { name: { $regex: query, $options: "i" } },
+        { description: { $regex: query, $options: "i" } },
+        { tags: { $in: [new RegExp(query, "i")] } }
+      ];
+    }
+
+    // Category filter
+    if (category) {
+      filter.category = category;
+    }
+
+    // Price range filter
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = parseFloat(minPrice);
+      if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
+    }
+
+    // Rating filter
+    if (minRating) {
+      filter.rating = { $gte: parseFloat(minRating) };
+    }
+
+    // Tags filter
+    if (tags) {
+      const tagArray = Array.isArray(tags) ? tags : [tags];
+      filter.tags = { $in: tagArray };
+    }
+
+    const products = await Product.find(filter)
+      .sort(sort)
+      .limit(50);
+
+    res.json(products);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get available filters
+app.get("/products/filters/options", async (req, res) => {
+  try {
+    const categories = await Product.distinct("category");
+    const tags = await Product.distinct("tags");
+    const priceRange = await Product.aggregate([
+      {
+        $group: {
+          _id: null,
+          minPrice: { $min: "$price" },
+          maxPrice: { $max: "$price" }
+        }
+      }
+    ]);
+
+    const ratings = [1, 2, 3, 4, 5];
+
+    res.json({
+      categories: categories.filter(Boolean),
+      tags: tags.filter(Boolean),
+      priceRange: priceRange[0] || { minPrice: 0, maxPrice: 1000 },
+      ratings
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== ANALYTICS ENDPOINTS ==========
+// Get sales analytics (admin only)
+app.get("/admin/analytics/sales", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { startDate, endDate, period = "day" } = req.query;
+
+    let dateFilter = {};
+    if (startDate || endDate) {
+      dateFilter = {
+        createdAt: {
+          ...(startDate && { $gte: new Date(startDate) }),
+          ...(endDate && { $lte: new Date(endDate) })
+        }
+      };
+    } else {
+      // Default: last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      dateFilter.createdAt = { $gte: thirtyDaysAgo };
+    }
+
+    const groupByFormat = {
+      day: "%Y-%m-%d",
+      week: "%Y-W%V",
+      month: "%Y-%m"
+    };
+
+    const analytics = await Order.aggregate([
+      { $match: { ...dateFilter, paymentStatus: "completed" } },
+      {
+        $group: {
+          _id: { $dateToString: { format: groupByFormat[period], date: "$createdAt" } },
+          totalSales: { $sum: "$total" },
+          orderCount: { $sum: 1 },
+          avgOrderValue: { $avg: "$total" }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    res.json(analytics);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get customer insights (admin only)
+app.get("/admin/analytics/customers", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const totalCustomers = await User.countDocuments({ role: "user" });
+    const totalOrders = await Order.countDocuments();
+    const totalRevenue = await Order.aggregate([
+      { $match: { paymentStatus: "completed" } },
+      { $group: { _id: null, total: { $sum: "$total" } } }
+    ]);
+
+    const repeatCustomers = await Order.aggregate([
+      {
+        $group: {
+          _id: "$userId",
+          orderCount: { $sum: 1 }
+        }
+      },
+      {
+        $match: { orderCount: { $gt: 1 } }
+      },
+      {
+        $count: "repeatCustomerCount"
+      }
+    ]);
+
+    const avgOrderValue = totalOrders > 0 ? (totalRevenue[0]?.total || 0) / totalOrders : 0;
+
+    res.json({
+      totalCustomers,
+      totalOrders,
+      totalRevenue: totalRevenue[0]?.total || 0,
+      repeatCustomers: repeatCustomers[0]?.repeatCustomerCount || 0,
+      repeatCustomerRate: totalCustomers > 0 ? ((repeatCustomers[0]?.repeatCustomerCount || 0) / totalCustomers * 100).toFixed(2) : 0,
+      avgOrderValue: avgOrderValue.toFixed(2)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get product performance (admin only)
+app.get("/admin/analytics/products", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const topProducts = await Order.aggregate([
+      { $unwind: "$items" },
+      {
+        $group: {
+          _id: "$items.productId",
+          totalSold: { $sum: "$items.quantity" },
+          totalRevenue: { $sum: { $multiply: ["$items.price", "$items.quantity"] } },
+          orderCount: { $sum: 1 }
+        }
+      },
+      { $sort: { totalRevenue: -1 } },
+      { $limit: 10 }
+    ]);
+
+    const lowStockProducts = await Product.find({ stock: { $lte: 5 } })
+      .select("name stock price")
+      .limit(10);
+
+    res.json({
+      topProducts,
+      lowStockProducts
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -708,6 +1494,55 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Socket.io Connection Handlers
+io.on("connection", (socket) => {
+  console.log("New client connected:", socket.id);
+
+  // User joins a room for personalized notifications
+  socket.on("user:join", (userId) => {
+    if (userId) {
+      socket.join(`user:${userId}`);
+      console.log(`User ${userId} joined their notification room`);
+    }
+  });
+
+  // Get order tracking updates
+  socket.on("order:getUpdates", async (orderId) => {
+    try {
+      const order = await Order.findById(orderId);
+      if (order) {
+        socket.emit("order:current", formatOrderForNotification(order));
+      }
+    } catch (err) {
+      console.error("Error fetching order:", err);
+    }
+  });
+
+  // Listen for order tracking requests
+  socket.on("orders:subscribe", async (userId) => {
+    try {
+      socket.join(`user:${userId}`);
+      const orders = await Order.find({ userId });
+      socket.emit("orders:initial", orders.map(formatOrderForNotification));
+    } catch (err) {
+      console.error("Error subscribing to orders:", err);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
+  });
+});
+
+// Delivery and payment routes
+app.use("/api", paymentRoutes);
+
+// Email OTP Routes
+app.use("/api/otp", emailOTPRoutes);
+
+// Authentication Routes with OTP
+app.use("/api/auth", authRoutes);
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+httpServer.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 

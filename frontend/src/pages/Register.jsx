@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { register } from "../api.js";
+import { register, login } from "../api.js";
+import "../styles/Auth.css";
 
-function Register() {
+function Register({ onLogin }) {
     const [credentials, setCredentials] = useState({ name: "", email: "", password: "", confirmPassword: "" });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const navigate = useNavigate();
+
+    useEffect(() => {
+        navigate("/register", { replace: true });
+    }, [navigate]);
 
     const handleRegister = async () => {
         if (!credentials.name || !credentials.email || !credentials.password || !credentials.confirmPassword) {
@@ -29,128 +34,110 @@ function Register() {
         setError("");
         try {
             await register(credentials.name, credentials.email, credentials.password);
+            if (typeof onLogin === "function") {
+                const loginRes = await login(credentials.email, credentials.password);
+                localStorage.setItem("token", loginRes.data.token);
+                if (loginRes.data.role) {
+                    localStorage.setItem("role", loginRes.data.role);
+                }
+                localStorage.setItem("email", loginRes.data.user?.email || credentials.email);
+                onLogin(loginRes.data.token, loginRes.data.role || "user");
+                setSuccess("Account created and signed in successfully! Redirecting...");
+                setTimeout(() => navigate("/"), 2000);
+                return;
+            }
             setSuccess("Account created successfully! Redirecting to login...");
             setTimeout(() => navigate("/login"), 2000);
         } catch (err) {
-            setError(err.response?.data?.error || "Registration failed");
+            setError(err.response?.data?.error || err.response?.data?.message || "Registration failed");
         } finally {
             setLoading(false);
         }
     };
 
+    const handleKeyPress = (e) => {
+        if (e.key === "Enter") {
+            handleRegister();
+        }
+    };
+
     return (
-        <div style={styles.container}>
-            <div style={styles.card}>
-                <h1>Register</h1>
-                {error && <div style={styles.error}>{error}</div>}
-                {success && <div style={styles.success}>{success}</div>}
-                <div style={styles.form}>
-                    <input
-                        type="text"
-                        placeholder="Full name"
-                        value={credentials.name}
-                        onChange={e => setCredentials({ ...credentials, name: e.target.value })}
-                        style={styles.input}
-                    />
-                    <input
-                        type="email"
-                        placeholder="Email"
-                        value={credentials.email}
-                        onChange={e => setCredentials({ ...credentials, email: e.target.value })}
-                        style={styles.input}
-                    />
-                    <input
-                        type="password"
-                        placeholder="Password"
-                        value={credentials.password}
-                        onChange={e => setCredentials({ ...credentials, password: e.target.value })}
-                        style={styles.input}
-                    />
-                    <input
-                        type="password"
-                        placeholder="Confirm Password"
-                        value={credentials.confirmPassword}
-                        onChange={e => setCredentials({ ...credentials, confirmPassword: e.target.value })}
-                        style={styles.input}
-                    />
-                    <button
-                        onClick={handleRegister}
-                        disabled={loading}
-                        style={{ ...styles.button, opacity: loading ? 0.6 : 1 }}
-                    >
-                        {loading ? "Registering..." : "Register"}
-                    </button>
+        <div className="auth-container">
+            <div className="auth-wrapper">
+                <div className="auth-card">
+                    <div className="auth-header">
+                        <h1>Create Account</h1>
+                        <p>Join EmberCart today</p>
+                    </div>
+
+                    <form className="auth-form" onSubmit={(e) => { e.preventDefault(); handleRegister(); }}>
+                        <div className="form-group">
+                            <label htmlFor="name">Full Name</label>
+                            <input
+                                id="name"
+                                type="text"
+                                placeholder="John Doe"
+                                value={credentials.name}
+                                onChange={e => setCredentials({ ...credentials, name: e.target.value })}
+                                onKeyPress={handleKeyPress}
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="email">Email Address</label>
+                            <input
+                                id="email"
+                                type="email"
+                                placeholder="your.email@example.com"
+                                value={credentials.email}
+                                onChange={e => setCredentials({ ...credentials, email: e.target.value })}
+                                onKeyPress={handleKeyPress}
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="password">Password</label>
+                            <input
+                                id="password"
+                                type="password"
+                                placeholder="At least 6 characters"
+                                value={credentials.password}
+                                onChange={e => setCredentials({ ...credentials, password: e.target.value })}
+                                onKeyPress={handleKeyPress}
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="confirmPassword">Confirm Password</label>
+                            <input
+                                id="confirmPassword"
+                                type="password"
+                                placeholder="Re-enter your password"
+                                value={credentials.confirmPassword}
+                                onChange={e => setCredentials({ ...credentials, confirmPassword: e.target.value })}
+                                onKeyPress={handleKeyPress}
+                            />
+                        </div>
+
+                        {error && <div className="error-message">{error}</div>}
+                        {success && <div className="success-message">{success}</div>}
+
+                        <button
+                            type="submit"
+                            className="auth-button"
+                            disabled={loading}
+                        >
+                            {loading ? "Creating Account..." : "Create Account"}
+                        </button>
+                    </form>
+
+                    <div className="auth-footer">
+                        <p>Already have an account? <Link to="/login">Sign in</Link></p>
+                    </div>
                 </div>
-                <p style={styles.footer}>
-                    Already have an account? <Link to="/login" style={styles.link}>Login</Link>
-                </p>
             </div>
         </div>
     );
 }
-
-const styles = {
-    container: {
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        minHeight: "calc(100vh - 80px)",
-        background: "#f5f5f5",
-    },
-    card: {
-        width: "100%",
-        maxWidth: 400,
-        padding: 32,
-        background: "#fff",
-        borderRadius: 8,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-    },
-    form: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-        marginTop: 24,
-    },
-    input: {
-        padding: 12,
-        border: "1px solid #ddd",
-        borderRadius: 4,
-        fontSize: 14,
-    },
-    button: {
-        padding: 12,
-        background: "#27ae60",
-        color: "#fff",
-        border: "none",
-        borderRadius: 4,
-        cursor: "pointer",
-        fontSize: 16,
-        fontWeight: "bold",
-    },
-    error: {
-        padding: 12,
-        background: "#fadbd8",
-        color: "#c0392b",
-        borderRadius: 4,
-        marginBottom: 16,
-    },
-    success: {
-        padding: 12,
-        background: "#d4edda",
-        color: "#155724",
-        borderRadius: 4,
-        marginBottom: 16,
-    },
-    footer: {
-        textAlign: "center",
-        marginTop: 16,
-        fontSize: 14,
-        color: "#666",
-    },
-    link: {
-        color: "#27ae60",
-        textDecoration: "none",
-    },
-};
 
 export default Register;

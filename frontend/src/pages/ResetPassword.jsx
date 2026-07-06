@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import { resetPassword } from "../api.js";
+import "../styles/Auth.css";
 
 function ResetPassword() {
     const { token } = useParams();
@@ -40,108 +41,65 @@ function ResetPassword() {
         }
     };
 
+    const handleKeyPress = (e) => {
+        if (e.key === "Enter") {
+            handleReset();
+        }
+    };
+
     return (
-        <div style={styles.container}>
-            <div style={styles.card}>
-                <h1>Reset Password</h1>
-                {error && <div style={styles.error}>{error}</div>}
-                {success && <div style={styles.success}>{success}</div>}
-                <div style={styles.form}>
-                    <input
-                        type="password"
-                        placeholder="New password"
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        style={styles.input}
-                    />
-                    <input
-                        type="password"
-                        placeholder="Confirm new password"
-                        value={confirmPassword}
-                        onChange={e => setConfirmPassword(e.target.value)}
-                        style={styles.input}
-                    />
-                    <button
-                        onClick={handleReset}
-                        disabled={loading}
-                        style={{ ...styles.button, opacity: loading ? 0.6 : 1 }}
-                    >
-                        {loading ? "Resetting..." : "Reset password"}
-                    </button>
-                    <button
-                        onClick={() => navigate("/login")}
-                        style={styles.secondaryButton}
-                    >
-                        Back to login
-                    </button>
+        <div className="auth-container">
+            <div className="auth-wrapper">
+                <div className="auth-card">
+                    <div className="auth-header">
+                        <h1>Reset Password</h1>
+                        <p>Create your new password</p>
+                    </div>
+
+                    <form className="auth-form" onSubmit={(e) => { e.preventDefault(); handleReset(); }}>
+                        <div className="form-group">
+                            <label htmlFor="password">New Password</label>
+                            <input
+                                id="password"
+                                type="password"
+                                placeholder="At least 6 characters"
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                                onKeyPress={handleKeyPress}
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="confirmPassword">Confirm Password</label>
+                            <input
+                                id="confirmPassword"
+                                type="password"
+                                placeholder="Re-enter your password"
+                                value={confirmPassword}
+                                onChange={e => setConfirmPassword(e.target.value)}
+                                onKeyPress={handleKeyPress}
+                            />
+                        </div>
+
+                        {error && <div className="error-message">{error}</div>}
+                        {success && <div className="success-message">{success}</div>}
+
+                        <button
+                            type="submit"
+                            className="auth-button"
+                            disabled={loading}
+                        >
+                            {loading ? "Resetting Password..." : "Reset Password"}
+                        </button>
+                    </form>
+
+                    <div className="auth-footer">
+                        <p><Link to="/login">← Back to Login</Link></p>
+                    </div>
                 </div>
             </div>
         </div>
     );
 }
-
-const styles = {
-    container: {
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        minHeight: "calc(100vh - 80px)",
-        background: "#f5f5f5",
-    },
-    card: {
-        width: "100%",
-        maxWidth: 400,
-        padding: 32,
-        background: "#fff",
-        borderRadius: 8,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-    },
-    form: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-        marginTop: 24,
-    },
-    input: {
-        padding: 12,
-        border: "1px solid #ddd",
-        borderRadius: 4,
-        fontSize: 14,
-    },
-    button: {
-        padding: 12,
-        background: "#27ae60",
-        color: "#fff",
-        border: "none",
-        borderRadius: 4,
-        cursor: "pointer",
-        fontSize: 16,
-        fontWeight: "bold",
-    },
-    secondaryButton: {
-        padding: 12,
-        background: "#ecf0f1",
-        color: "#333",
-        border: "none",
-        borderRadius: 4,
-        cursor: "pointer",
-        fontSize: 16,
-        fontWeight: "bold",
-    },
-    error: {
-        padding: 12,
-        background: "#fadbd8",
-        color: "#c0392b",
-        borderRadius: 4,
-        marginBottom: 16,
-    },
-    success: {
-        padding: 12,
-        background: "#d4edda",
-        color: "#155724",
-        borderRadius: 4,
-        marginBottom: 16,
-    },
-};
 
 export default ResetPassword;

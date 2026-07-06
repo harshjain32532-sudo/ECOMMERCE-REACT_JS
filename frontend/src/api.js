@@ -29,6 +29,12 @@ api.interceptors.request.use((config) => {
 export const register = (name, email, password) =>
     api.post("/register", { name, email, password });
 
+export const registerWithOTP = (name, email, phone) =>
+    api.post("/api/auth/register", { name, email, phone });
+
+export const verifySignupOTP = (email, otp, password, name, phone) =>
+    api.post("/api/auth/verify-otp-signup", { email, otp, password, name, phone });
+
 export const login = (email, password) =>
     api.post("/login", { email, password });
 
@@ -77,6 +83,13 @@ export const getOrders = () => api.get("/orders");
 export const getOrder = (id) => api.get(`/orders/${id}`);
 export const createOrder = (data) => api.post("/orders", data);
 export const updateOrder = (id, data) => api.put(`/orders/${id}`, data);
+export const getAdminOrders = () => api.get("/admin/orders");
+export const getAdminProductOrders = () => api.get("/admin/product-orders");
+export const updateAdminOrderStatus = (orderId, status, message) =>
+    api.put(`/admin/orders/${orderId}/status`, { status, message });
+export const getAdminDeliveryTracking = () => api.get("/admin/delivery-tracking");
+export const updateDeliveryDate = (orderId, deliveredAt, trackingNumber) =>
+    api.put(`/admin/delivery/${orderId}`, { deliveredAt, trackingNumber });
 
 export const getAdminStats = () => api.get("/admin/stats");
 
@@ -99,3 +112,49 @@ export const get2FAStatus = () =>
 
 export const updatePhoneNumber = (phone) =>
     api.post("/user/phone/update", { phone });
+
+// ========== EMAIL PREFERENCES ==========
+export const getEmailPreferences = () =>
+    api.get("/user/email-preferences");
+
+export const updateEmailPreferences = (preferences) =>
+    api.put("/user/email-preferences", preferences);
+
+// ========== COUPONS ==========
+export const applyCoupon = (code, cartTotal) =>
+    api.post("/coupons/apply", { code, cartTotal });
+
+export const getAllCoupons = () =>
+    api.get("/coupons");
+
+export const createCoupon = (data) =>
+    api.post("/coupons", data);
+
+// ========== BROWSING HISTORY & RECOMMENDATIONS ==========
+export const trackProductView = (productId) =>
+    api.post(`/products/${productId}/view`);
+
+export const getRecommendations = () =>
+    api.get("/recommendations");
+
+export const getBrowsingHistory = () =>
+    api.get("/browsing-history");
+
+// ========== SEARCH & FILTERS ==========
+export const searchProducts = (query, filters = {}) =>
+    api.get("/products/search", { params: { query, ...filters } });
+
+export const getFilterOptions = () =>
+    api.get("/products/filters/options");
+
+// ========== ANALYTICS ==========
+export const getSalesAnalytics = (startDate, endDate, period = "day") =>
+    api.get("/admin/analytics/sales", {
+        params: { startDate, endDate, period }
+    });
+
+export const getCustomerAnalytics = () =>
+    api.get("/admin/analytics/customers");
+
+export const getProductAnalytics = () =>
+    api.get("/admin/analytics/products");
