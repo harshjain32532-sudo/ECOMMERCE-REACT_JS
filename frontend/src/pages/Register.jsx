@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { register, login } from "../api.js";
 import "../styles/Auth.css";
@@ -9,10 +9,6 @@ function Register({ onLogin }) {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const navigate = useNavigate();
-
-    useEffect(() => {
-        navigate("/register", { replace: true });
-    }, [navigate]);
 
     const handleRegister = async () => {
         if (!credentials.name || !credentials.email || !credentials.password || !credentials.confirmPassword) {

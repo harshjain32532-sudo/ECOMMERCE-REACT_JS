@@ -11,7 +11,7 @@ function Hero() {
                     <button className="hero-cta">Shop Now</button>
                 </div>
                 <div className="hero-image">
-                    <div className="hero-placeholder">Featured Products</div>
+                    {/* Hero visual can go here if needed */}
                 </div>
             </div>
         </section>
