@@ -7,6 +7,8 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import multer from "multer";
+import sharp from "sharp";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { getOrderEmailTemplate, getStatusChangeMessage, formatOrderForNotification } from "./services/orderTrackingService.js";
@@ -1336,6 +1338,489 @@ app.get("/products/search", async (req, res) => {
       .limit(50);
 
     res.json(products);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== AI-POWERED ENDPOINTS ==========
+// Simple AI recommendations based on browsing history, tags and popularity
+app.get("/ai/recommendations", async (req, res) => {
+  try {
+    let user = null;
+    if (req.headers.authorization) {
+      try {
+        const token = req.headers.authorization.split(" ")[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+        user = await User.findById(decoded.id);
+      } catch (e) {
+        user = null;
+      }
+    }
+
+    const recommendations = { similar: [], browsing: [], trending: [] };
+
+    if (user && user.browsingHistory && user.browsingHistory.length > 0) {
+      const recent = user.browsingHistory.slice(0, 5).map(h => h.productId);
+      const recentProducts = await Product.find({ _id: { $in: recent } });
+
+      const categories = recentProducts.map(p => p.category).filter(Boolean);
+      const tags = recentProducts.flatMap(p => p.tags || []);
+
+      recommendations.similar = await Product.find({
+        $or: [{ category: { $in: categories } }, { tags: { $in: tags } }],
+        _id: { $nin: recent }
+      }).limit(6);
+
+      recommendations.browsing = await Product.find({ _id: { $nin: recent } }).sort({ reviewCount: -1 }).limit(6);
+    } else {
+      // Fallback: trending products
+      recommendations.trending = await Product.find().sort({ reviewCount: -1 }).limit(6);
+      recommendations.browsing = recommendations.trending;
+    }
+
+    res.json(recommendations);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI Chatbot: lightweight rule-based assistant that can reference products
+app.post("/ai/chat", async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: "Message required" });
+
+    const tokens = (message || "").match(/\w+/g) || [];
+    const q = tokens.join(" ");
+
+    // Try to match products by name or tags
+    const products = await Product.find({
+      $or: [
+        { name: { $regex: q, $options: "i" } },
+        { description: { $regex: q, $options: "i" } },
+        { tags: { $in: tokens.map(t => new RegExp(t, "i")) } }
+      ]
+    }).limit(5);
+
+    if (products && products.length > 0) {
+      const reply = {
+        type: "products",
+        text: `I found ${products.length} product(s) that may help.`,
+        products: products.map(p => ({ id: p._id, name: p.name, price: p.price, image: p.image }))
+      };
+      return res.json(reply);
+    }
+
+    // Basic FAQ-style fallbacks
+    const lower = (message || "").toLowerCase();
+    if (lower.includes("return") || lower.includes("refund")) {
+      return res.json({ type: "text", text: "Our return policy allows returns within 14 days of delivery. Would you like a link to the policy?" });
+    }
+
+    if (lower.includes("shipping") || lower.includes("delivery")) {
+      return res.json({ type: "text", text: "Shipping times vary by location — standard delivery typically takes 3-7 business days." });
+    }
+
+    // Generic fallback
+    res.json({ type: "text", text: "Sorry, I didn't understand that. Can you rephrase or ask about a product name?" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI Chat via OpenAI (server-side proxy) - requires OPENAI_API_KEY in env
+app.post("/ai/chat-openai", async (req, res) => {
+  try {
+    const { message, history } = req.body;
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+    const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-3.5-turbo";
+    if (!OPENAI_API_KEY) return res.status(500).json({ error: "OpenAI API key not configured" });
+    if (!message) return res.status(400).json({ error: "Message required" });
+
+    const messages = Array.isArray(history) ? [...history] : [];
+    messages.push({ role: "user", content: message });
+
+    // Use fetch to call OpenAI
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({ model: OPENAI_MODEL, messages, max_tokens: 600 })
+    });
+
+    const data = await r.json();
+    // Return the raw response and a simplified answer
+    const answer = data?.choices?.[0]?.message?.content || null;
+    res.json({ raw: data, answer });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI Order Tracking Assistant: provides order status, ETA, and summary
+app.post('/ai/order-assistant', async (req, res) => {
+  try {
+    const { orderId, message } = req.body;
+    if (!orderId) return res.status(400).json({ error: 'orderId required' });
+
+    const order = await Order.findById(orderId).lean();
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    // Authorization: if token provided, ensure user owns the order or is admin
+    let requesterId = null;
+    try {
+      const token = req.headers.authorization?.split(' ')[1];
+      if (token) {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        requesterId = decoded.id;
+        const requestUser = await User.findById(requesterId);
+        if (requestUser && requestUser.role !== 'admin' && order.userId !== requesterId) {
+          return res.status(403).json({ error: 'Forbidden: not owner of order' });
+        }
+      }
+    } catch (e) {
+      // ignore token errors; proceed with limited info if unauthenticated
+    }
+
+    const formatted = formatOrderForNotification(order);
+
+    const lower = (message || '').toLowerCase();
+    // Build reply
+    let replyText = `Order ${order._id.toString().slice(-8).toUpperCase()} is currently '${order.status}'.`;
+    if (order.estimatedDelivery) {
+      replyText += ` Estimated delivery: ${new Date(order.estimatedDelivery).toDateString()}.`;
+    }
+    if (order.trackingNumber) {
+      replyText += ` Tracking number: ${order.trackingNumber}.`;
+    }
+
+    if (lower.includes('items') || lower.includes('what') || lower.includes('contents')) {
+      const itemsSummary = (order.items || []).map(it => `${it.name} x${it.quantity || 1}`).join(', ');
+      replyText += ` Items: ${itemsSummary}.`;
+    }
+
+    if (lower.includes('where') || lower.includes('status') || lower.includes('update')) {
+      // include status history
+      const recent = (order.statusHistory || []).slice(-3).map(h => `${h.status} (${new Date(h.timestamp).toLocaleString()}): ${h.message || ''}`).join(' | ');
+      if (recent) replyText += ` Recent updates: ${recent}.`;
+    }
+
+    if (lower.includes('cancel')) {
+      if (['pending', 'confirmed', 'processing'].includes(order.status)) {
+        replyText += ' This order is eligible for cancellation; please confirm if you want to cancel.';
+      } else {
+        replyText += ' This order cannot be cancelled at this stage.';
+      }
+    }
+
+    // Return structured and plain-text reply
+    res.json({ type: 'order', summary: replyText, order: formatted });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI Return & Refund Assistant
+app.post('/ai/return-assistant', async (req, res) => {
+  try {
+    const { orderId, message, action, useOpenAI = false } = req.body;
+    if (!orderId) return res.status(400).json({ error: 'orderId required' });
+
+    const order = await Order.findById(orderId).lean();
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    // Auth check: optional; for destructive actions require authenticated owner or admin
+    let requesterId = null;
+    let requestUser = null;
+    try {
+      const token = req.headers.authorization?.split(' ')[1];
+      if (token) {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        requesterId = decoded.id;
+        requestUser = await User.findById(requesterId);
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    const cancelEligible = ['pending', 'confirmed', 'processing'].includes(order.status);
+    let returnEligible = false;
+    const returnWindowDays = parseInt(process.env.RETURN_WINDOW_DAYS || '14', 10);
+    if (order.status === 'delivered') {
+      const deliveredAt = order.updatedAt || order.estimatedDelivery || order.createdAt;
+      if (deliveredAt) {
+        const diff = Date.now() - new Date(deliveredAt).getTime();
+        returnEligible = diff <= returnWindowDays * 24 * 60 * 60 * 1000;
+      }
+    }
+
+    const refundEstimate = order.total || (order.items || []).reduce((s, it) => s + ((it.price || 0) * (it.quantity || 1)), 0);
+
+    // If OpenAI requested and configured, ask OpenAI for a natural-language reply summarizing options
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+    if (useOpenAI && OPENAI_API_KEY && (message || action)) {
+      const systemPrompt = `You are an assistant that helps customers with returns and refunds. Here is the order summary: ${JSON.stringify({ id: order._id, status: order.status, estimatedDelivery: order.estimatedDelivery, trackingNumber: order.trackingNumber, refundEstimate }, null, 2)}. Respond courteously and include clear next steps.`;
+      const userPrompt = message || (action === 'confirm_cancel' ? 'Please cancel my order' : `I want to ${action}`);
+
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({ model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo', messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], max_tokens: 500 })
+      });
+      const data = await r.json();
+      const answer = data?.choices?.[0]?.message?.content || null;
+      return res.json({ type: 'openai', answer, metadata: { cancelEligible, returnEligible, refundEstimate } });
+    }
+
+    // Handle confirm_cancel action (perform cancellation)
+    if (action === 'confirm_cancel') {
+      if (!requesterId) return res.status(401).json({ error: 'Authentication required to cancel' });
+      if (!requestUser) return res.status(401).json({ error: 'Invalid user' });
+      if (requestUser.role !== 'admin' && order.userId !== requesterId) return res.status(403).json({ error: 'Forbidden: not owner of order' });
+
+      if (!cancelEligible) return res.status(400).json({ error: 'Order is not eligible for cancellation' });
+
+      const orderDoc = await Order.findById(orderId);
+      orderDoc.status = 'cancelled';
+      orderDoc.statusHistory = orderDoc.statusHistory || [];
+      orderDoc.statusHistory.push({ status: 'cancelled', timestamp: Date.now(), message: 'Cancelled via AI Return Assistant' });
+      orderDoc.updatedAt = Date.now();
+      await orderDoc.save();
+
+      // Emit notification
+      io.emit('orderStatusUpdated', { orderId: orderDoc._id, status: orderDoc.status, message: 'Order cancelled' });
+      io.to(`user:${orderDoc.userId}`).emit('user:order:updated', formatOrderForNotification(orderDoc));
+
+      return res.json({ type: 'action', result: 'cancelled', summary: `Order ${orderDoc._id.toString().slice(-8).toUpperCase()} cancelled.` });
+    }
+
+    // Default: return eligibility info and guidance
+    const guidance = [];
+    if (cancelEligible) guidance.push('This order can be cancelled before shipping. To cancel, confirm cancellation in the assistant.');
+    if (returnEligible) guidance.push(`This order is eligible for return within ${returnWindowDays} days. Start a return from your orders page.`);
+    if (!cancelEligible && !returnEligible) guidance.push('This order is not eligible for cancellation or return automatically; contact support for exceptions.');
+
+    const summary = `Order ${order._id.toString().slice(-8).toUpperCase()} status: ${order.status}. Refund estimate: ₹${Math.round(refundEstimate * 100) / 100}. ${guidance.join(' ')}`;
+
+    res.json({ type: 'return', cancelEligible, returnEligible, refundEstimate, summary });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI-powered smart search that scores results by relevance and popularity
+app.get("/ai/search", async (req, res) => {
+  try {
+    const q = (req.query.q || "").trim();
+    if (!q) return res.status(400).json({ error: "Query parameter 'q' required" });
+
+    const products = await Product.find({
+      $or: [
+        { name: { $regex: q, $options: "i" } },
+        { description: { $regex: q, $options: "i" } },
+        { tags: { $in: [new RegExp(q, "i")] } }
+      ]
+    }).limit(200);
+
+    // Simple scoring: name match (3), tag match (2), description match (1), popularity bonus
+    const scored = products.map(p => {
+      let score = 0;
+      const nameMatch = new RegExp(q, "i").test(p.name || "");
+      const descMatch = new RegExp(q, "i").test(p.description || "");
+      const tagMatch = (p.tags || []).some(t => new RegExp(q, "i").test(t));
+      if (nameMatch) score += 3;
+      if (tagMatch) score += 2;
+      if (descMatch) score += 1;
+      score += (p.reviewCount || 0) / 100; // small popularity boost
+      return { product: p, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    res.json(scored.slice(0, 50).map(s => ({ ...s.product.toObject(), _aiScore: s.score })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Utility: simple Levenshtein distance
+function levenshtein(a = "", b = "") {
+  const al = a.length; const bl = b.length;
+  if (al === 0) return bl;
+  if (bl === 0) return al;
+  const dp = Array.from({ length: al + 1 }, () => new Array(bl + 1).fill(0));
+  for (let i = 0; i <= al; i++) dp[i][0] = i;
+  for (let j = 0; j <= bl; j++) dp[0][j] = j;
+  for (let i = 1; i <= al; i++) {
+    for (let j = 1; j <= bl; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+  return dp[al][bl];
+}
+
+// Advanced natural-language search with optional typo correction and OpenAI keyword extraction
+app.get('/ai/search-advanced', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.status(400).json({ error: 'q required' });
+    const typo = req.query.typo === 'true' || req.query.typo === true;
+    const useOpenAI = req.query.useOpenAI === 'true' || req.query.useOpenAI === true;
+
+    let keywords = [];
+    if (useOpenAI && process.env.OPENAI_API_KEY) {
+      const prompt = `Extract search keywords from this user query and return a JSON array named keywords: ${q}`;
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        body: JSON.stringify({ model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo', messages: [{ role: 'user', content: prompt }], max_tokens: 150 })
+      });
+      const data = await r.json();
+      const text = data?.choices?.[0]?.message?.content || '';
+      try {
+        const match = text.match(/\[.*\]/s);
+        if (match) keywords = JSON.parse(match[0]);
+      } catch (e) {
+        keywords = (q.split(/\s+/).slice(0, 5));
+      }
+    } else {
+      keywords = q.split(/\s+/).filter(Boolean).slice(0, 8);
+    }
+
+    // Build regex filter
+    const regexes = keywords.map(k => new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+    const products = await Product.find({
+      $or: [{ name: { $in: regexes } }, { description: { $in: regexes } }, { tags: { $in: keywords } }]
+    }).limit(200);
+
+    // Score results
+    const scored = products.map(p => {
+      let score = 0;
+      const name = p.name || '';
+      const desc = p.description || '';
+      const nameMatches = regexes.some(r => r.test(name));
+      const descMatches = regexes.some(r => r.test(desc));
+      const tagMatches = (p.tags || []).some(t => keywords.some(k => new RegExp(k, 'i').test(t)));
+      if (nameMatches) score += 3;
+      if (tagMatches) score += 2;
+      if (descMatches) score += 1;
+      // typo correction: boost near matches by edit distance
+      if (typo) {
+        const dist = levenshtein(q.toLowerCase(), (name || '').toLowerCase());
+        const norm = Math.max(0, 1 - (dist / Math.max(1, name.length)));
+        score += norm * 2; // small boost
+      }
+      score += (p.reviewCount || 0) / 100;
+      return { product: p, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    res.json(scored.slice(0, 50).map(s => ({ ...s.product.toObject(), _score: s.score })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Image search: upload an image and find visually similar products (basic perceptual hashing)
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+async function imageToVector(buffer) {
+  // resize to 32x32 grayscale and return Float32 normalized vector
+  const img = await sharp(buffer).resize(32, 32, { fit: 'inside' }).grayscale().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = img; // data is Uint8
+  const arr = new Float32Array(data.length);
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) { arr[i] = data[i] / 255; sum += arr[i] * arr[i]; }
+  const norm = Math.sqrt(sum) || 1;
+  for (let i = 0; i < arr.length; i++) arr[i] = arr[i] / norm;
+  return arr;
+}
+
+function cosineSim(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+  return s;
+}
+
+app.post('/ai/image-search', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'image file required (field name: image)' });
+    const queryVec = await imageToVector(req.file.buffer);
+
+    // Load candidate products (limit to 200 to avoid long runs)
+    const candidates = await Product.find({ image: { $exists: true, $ne: '' } }).limit(200).lean();
+
+    const results = [];
+    await Promise.all(candidates.map(async (p) => {
+      try {
+        // fetch image URL
+        const r = await fetch(p.image, { timeout: 5000 });
+        if (!r.ok) return;
+        const buf = await r.arrayBuffer();
+        const vec = await imageToVector(Buffer.from(buf));
+        const sim = cosineSim(queryVec, vec);
+        results.push({ product: p, similarity: sim });
+      } catch (e) {
+        // ignore per-product failures
+      }
+    }));
+
+    results.sort((a, b) => b.similarity - a.similarity);
+    res.json(results.slice(0, 10).map(r => ({ ...r.product, _similarity: Math.round(r.similarity * 10000) / 10000 })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sales prediction: simple moving-average forecast per product or overall
+app.get("/ai/sales-predict", async (req, res) => {
+  try {
+    const { productId, days = 7, lookbackDays = 30 } = req.query;
+    const daysNum = parseInt(days, 10) || 7;
+    const lookback = parseInt(lookbackDays, 10) || 30;
+
+    const since = new Date();
+    since.setDate(since.getDate() - lookback);
+
+    const match = { createdAt: { $gte: since }, paymentStatus: "completed" };
+    if (productId) {
+      match["items.productId"] = productId;
+    }
+
+    const orders = await Order.find(match).lean();
+
+    // Aggregate daily sales
+    const salesByDay = {};
+    orders.forEach(order => {
+      const day = new Date(order.createdAt).toISOString().slice(0, 10);
+      let qty = 0;
+      if (productId) {
+        (order.items || []).forEach(it => { if ((it.productId || it._id || "").toString() === productId) qty += (it.quantity || 1); });
+      } else {
+        qty = (order.items || []).reduce((s, it) => s + (it.quantity || 1), 0);
+      }
+      salesByDay[day] = (salesByDay[day] || 0) + qty;
+    });
+
+    const daysAvailable = Object.keys(salesByDay).length || 1;
+    const total = Object.values(salesByDay).reduce((s, v) => s + v, 0);
+    const avgPerDay = total / daysAvailable;
+
+    // Forecast = avgPerDay for next N days
+    const forecast = [];
+    for (let i = 1; i <= daysNum; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      forecast.push({ date: d.toISOString().slice(0, 10), predictedUnits: Math.round(avgPerDay * 100) / 100 });
+    }
+
+    res.json({ productId: productId || null, lookbackDays: lookback, avgPerDay: Math.round(avgPerDay * 100) / 100, forecast });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

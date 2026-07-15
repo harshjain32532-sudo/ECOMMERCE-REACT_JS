@@ -158,3 +158,18 @@ export const getCustomerAnalytics = () =>
 
 export const getProductAnalytics = () =>
     api.get("/admin/analytics/products");
+
+// ========== AI Endpoints ==========
+export const aiGetRecommendations = () => api.get("/ai/recommendations");
+export const aiChat = (message) => api.post("/ai/chat", { message });
+export const aiChatOpenAI = (message, history = []) => api.post("/ai/chat-openai", { message, history });
+export const aiOrderAssistant = (orderId, message = '') => api.post('/ai/order-assistant', { orderId, message });
+export const aiReturnAssistant = (orderId, message = '', action = null, opts = {}) => api.post('/ai/return-assistant', { orderId, message, action, ...opts });
+export const aiSearch = (q) => api.get("/ai/search", { params: { q } });
+export const getSalesPrediction = (opts = {}) => api.get("/ai/sales-predict", { params: opts });
+export const aiSearchAdvanced = (q, opts = {}) => api.get('/ai/search-advanced', { params: { q, ...opts } });
+export const aiImageSearch = (file) => {
+    const form = new FormData();
+    form.append('image', file);
+    return api.post('/ai/image-search', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
