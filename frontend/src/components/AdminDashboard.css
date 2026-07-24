@@ -29,6 +29,27 @@
     margin: 0;
 }
 
+.dashboard-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.debug-link-btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    background: #2f241c;
+    color: white;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.debug-link-btn:hover {
+    background: #4a3427;
+}
+
 .time-range-selector {
     display: flex;
     gap: 10px;

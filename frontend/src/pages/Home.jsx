@@ -5,6 +5,7 @@ import ProductCard from "../components/ProductCard.jsx";
 import ProductFilters from "../components/ProductFilters.jsx";
 import Pagination from "../components/Pagination.jsx";
 import Footer from "../components/Footer.jsx";
+import { Link } from "react-router-dom";
 import "../styles/Products.css";
 
 function Home() {
@@ -110,6 +111,7 @@ function Home() {
     return (
         <div>
             <Hero />
+
 
             <div className="products-container">
                 <div className="products-header">

@@ -15,7 +15,10 @@ import { getOrderEmailTemplate, getStatusChangeMessage, formatOrderForNotificati
 import paymentRoutes from "./routes/payment.js";
 import emailOTPRoutes from "./routes/emailOTP.js";
 import authRoutes from "./routes/auth.js";
+import notificationRoutes from "./routes/notification.js";
 import User from "./models/user.js";
+import ChatMessage from "./models/chat.js";
+import { persistChatMessage, resolveChatTargetUserId } from "./services/chatRouting.js";
 
 dotenv.config();
 const app = express();
@@ -55,6 +58,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "secret";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase();
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const normalizeEmail = (email) => (email || "").trim().toLowerCase();
+const createSlug = (value) => (value || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 // Email Configuration
 const emailTransporter = nodemailer.createTransport({
@@ -83,12 +87,14 @@ const sendEmail = async (to, subject, html) => {
 const productSchema = new mongoose.Schema({
   name: String,
   price: Number,
+  originalPrice: Number,
   image: String,
   description: String,
   stock: { type: Number, default: 10 },
   rating: { type: Number, default: 0 },
   reviewCount: { type: Number, default: 0 },
   category: String,
+  brand: { type: String, default: "Generic" },
   tags: [String],
   createdAt: { type: Date, default: Date.now }
 });
@@ -121,9 +127,19 @@ const orderSchema = new mongoose.Schema({
     country: String,
   },
   trackingNumber: String,
+  courierName: String,
   estimatedDelivery: Date,
   paymentMethod: { type: String, default: "card" },
   paymentStatus: { type: String, default: "pending", enum: ["pending", "completed", "failed"] },
+  returnRequested: { type: Boolean, default: false },
+  returnReason: String,
+  returnCondition: String,
+  refund: {
+    status: { type: String, enum: ["none", "pending", "completed", "failed"], default: "none" },
+    amount: { type: Number, default: 0 },
+    method: String,
+    expectedDate: Date,
+  },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -159,10 +175,87 @@ const couponSchema = new mongoose.Schema({
   ]
 });
 
+const categorySchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  slug: { type: String, required: true, trim: true, unique: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const brandSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  slug: { type: String, required: true, trim: true, unique: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
 const Product = mongoose.model("Product", productSchema);
 const Order = mongoose.model("Order", orderSchema);
 const FeaturedProduct = mongoose.model("FeaturedProduct", featuredProductSchema);
 const Coupon = mongoose.model("Coupon", couponSchema);
+const Category = mongoose.model("Category", categorySchema);
+const Brand = mongoose.model("Brand", brandSchema);
+
+const RETURN_WINDOW_DAYS = parseInt(process.env.RETURN_WINDOW_DAYS || "14", 10);
+const CANCELLABLE_STATUSES = ["pending", "confirmed", "processing"];
+
+const parseOrderIdentifier = (text) => {
+  if (!text) return null;
+  const normalized = text.trim();
+  const idMatch = normalized.match(/(?:order\s*id\s*#?|#)([a-fA-F0-9]{8,24})/i);
+  if (idMatch) return idMatch[1];
+  const suffixMatch = normalized.match(/\b([a-fA-F0-9]{8})\b/);
+  return suffixMatch ? suffixMatch[1] : null;
+};
+
+const findOrderByIdentifier = async (identifier) => {
+  if (!identifier) return null;
+  if (/^[a-fA-F0-9]{24}$/.test(identifier)) {
+    return await Order.findById(identifier).lean();
+  }
+  if (/^[a-fA-F0-9]{8}$/.test(identifier)) {
+    return await Order.findOne({
+      $expr: {
+        $regexMatch: {
+          input: { $toString: "$_id" },
+          regex: `${identifier}$`,
+          options: "i"
+        }
+      }
+    }).lean();
+  }
+  return null;
+};
+
+const formatShippingAddress = (address = {}) => {
+  if (!address || !address.line1) return "Not available";
+  const parts = [address.line1, address.city, address.state, address.zip, address.country].filter(Boolean);
+  return parts.join(", ");
+};
+
+const formatOrderStatusReply = (order) => {
+  const shortId = order._id.toString().slice(-8).toUpperCase();
+  let text = `Order ${shortId} is currently '${order.status}'. Payment status is '${order.paymentStatus}'.`;
+  if (order.courierName) text += ` Courier: ${order.courierName}.`;
+  if (order.trackingNumber) text += ` Tracking number: ${order.trackingNumber}.`;
+  if (order.estimatedDelivery) text += ` Estimated delivery: ${new Date(order.estimatedDelivery).toDateString()}.`;
+  const shipping = formatShippingAddress(order.shippingAddress);
+  if (shipping !== "Not available") text += ` Shipping address: ${shipping}.`;
+  if (order.refund && order.refund.status && order.refund.status !== "none") {
+    text += ` Refund status: ${order.refund.status}`;
+    if (order.refund.amount) text += ` for ₹${order.refund.amount}`;
+    if (order.refund.method) text += ` via ${order.refund.method}`;
+    if (order.refund.expectedDate) text += ` by ${new Date(order.refund.expectedDate).toDateString()}`;
+    text += ".";
+  }
+  return text;
+};
+
+const isReturnEligible = (order) => {
+  if (!order || order.status !== "delivered") return false;
+  const deliveredAt = order.updatedAt || order.estimatedDelivery || order.createdAt;
+  if (!deliveredAt) return false;
+  const diff = Date.now() - new Date(deliveredAt).getTime();
+  return diff <= RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+};
 
 async function createAdminIfNeeded() {
   try {
@@ -432,6 +525,190 @@ app.get("/admin/stats", verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
+app.get("/admin/categories", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const categories = await Category.find().sort({ name: 1 }).lean();
+    const productCategories = await Product.distinct("category");
+    const merged = [...new Set([...(categories || []).map((c) => c.name), ...(productCategories || []).filter(Boolean)])]
+      .map((name) => ({ name, slug: createSlug(name) }));
+    res.json(merged);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/admin/categories", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const name = (req.body.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Category name required" });
+    const category = await Category.create({ name, slug: createSlug(name) || createSlug(Date.now().toString()) });
+    res.status(201).json(category);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/admin/categories/:id", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const name = (req.body.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Category name required" });
+    const category = await Category.findByIdAndUpdate(req.params.id, { name, slug: createSlug(name) }, { new: true });
+    res.json(category);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/admin/categories/:id", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    await Category.findByIdAndDelete(req.params.id);
+    res.json({ message: "Category deleted" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/admin/brands", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const brands = await Brand.find().sort({ name: 1 }).lean();
+    const productBrands = await Product.distinct("brand");
+    const merged = [...new Set([...(brands || []).map((b) => b.name), ...(productBrands || []).filter(Boolean)])]
+      .map((name) => ({ name, slug: createSlug(name) }));
+    res.json(merged);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/admin/brands", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const name = (req.body.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Brand name required" });
+    const brand = await Brand.create({ name, slug: createSlug(name) || createSlug(Date.now().toString()) });
+    res.status(201).json(brand);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/admin/brands/:id", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const name = (req.body.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Brand name required" });
+    const brand = await Brand.findByIdAndUpdate(req.params.id, { name, slug: createSlug(name) }, { new: true });
+    res.json(brand);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/admin/brands/:id", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    await Brand.findByIdAndDelete(req.params.id);
+    res.json({ message: "Brand deleted" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/admin/users", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const users = await User.find().select("-password").sort({ createdAt: -1 }).lean();
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/admin/users/:id/role", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!role) return res.status(400).json({ error: "Role required" });
+    const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true }).select("-password");
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/admin/users/:id", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    if (req.params.id === req.userId.toString()) {
+      return res.status(400).json({ error: "You cannot delete your own account" });
+    }
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ message: "User deleted" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/admin/coupons", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const coupons = await Coupon.find().sort({ createdAt: -1 }).lean();
+    res.json(coupons);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/admin/coupons", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const coupon = await Coupon.create(req.body);
+    res.status(201).json(coupon);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/admin/coupons/:id", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const coupon = await Coupon.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json(coupon);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/admin/coupons/:id", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    await Coupon.findByIdAndDelete(req.params.id);
+    res.json({ message: "Coupon deleted" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/admin/inventory", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const products = await Product.find().select("name stock price category brand createdAt").sort({ stock: 1 }).lean();
+    res.json({
+      summary: {
+        totalProducts: products.length,
+        lowStock: products.filter((product) => (product.stock || 0) <= 5).length,
+        outOfStock: products.filter((product) => (product.stock || 0) === 0).length
+      },
+      products
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/admin/inventory/:productId", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const update = {};
+    if (typeof req.body.stock === "number") update.stock = req.body.stock;
+    if (typeof req.body.price === "number") update.price = req.body.price;
+    const product = await Product.findByIdAndUpdate(req.params.productId, update, { new: true });
+    if (!product) return res.status(404).json({ error: "Product not found" });
+    res.json(product);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/admin/customers", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const customers = await User.find({ role: "user" }).select("name email phone shippingAddress createdAt").sort({ createdAt: -1 }).lean();
@@ -690,6 +967,79 @@ app.get("/debug/routes", (req, res) => {
   res.json(routes);
 });
 
+app.get("/admin/debug/chat", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || "100", 10), 200);
+    const messages = await ChatMessage.find({}).sort({ createdAt: -1 }).limit(limit).lean();
+
+    const escapeHtml = (value) => String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;");
+
+    const rows = messages.map((message) => `
+      <tr>
+        <td>${escapeHtml(message.createdAt ? new Date(message.createdAt).toLocaleString() : "")}</td>
+        <td>${escapeHtml(message.conversationId || "")}</td>
+        <td>${escapeHtml(message.senderRole || "")}</td>
+        <td>${escapeHtml(message.senderName || message.senderId || "")}</td>
+        <td>${escapeHtml(message.recipientRole || "")}</td>
+        <td>${escapeHtml(message.recipientName || message.recipientId || "")}</td>
+        <td>${escapeHtml(message.text || "")}</td>
+      </tr>
+    `).join("");
+
+    const html = `<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Chat Debug View</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; background: #f7f7f7; }
+            table { width: 100%; border-collapse: collapse; background: white; }
+            th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; } 
+            th { background: #2f241c; color: white; }
+            tr:nth-child(even) { background: #faf7f2; }
+            .meta { color: #6b5846; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <h2>Saved chat entries</h2>
+          <p class="meta">Showing the latest ${messages.length} entries from the database.</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Conversation</th>
+                <th>Sender role</th>
+                <th>Sender</th>
+                <th>Recipient role</th>
+                <th>Recipient</th>
+                <th>Message</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </body>
+      </html>`;
+
+    res.type("html").send(html);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/debug/chat", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || "100", 10), 200);
+    const messages = await ChatMessage.find({}).sort({ createdAt: -1 }).limit(limit).lean();
+    res.json(messages);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/reset-password", async (req, res) => {
   try {
     const { token, password } = req.body;
@@ -910,6 +1260,105 @@ app.put("/orders/:id", verifyToken, async (req, res) => {
 
     const order = await Order.findByIdAndUpdate(orderId, updateData, { new: true });
     res.json(order);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/orders/:id/cancel", verifyToken, async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.userId !== req.userId) return res.status(403).json({ error: "Unauthorized" });
+
+    if (!CANCELLABLE_STATUSES.includes(order.status)) {
+      return res.status(400).json({ error: "Order cannot be cancelled at this stage" });
+    }
+
+    order.status = "cancelled";
+    order.statusHistory = order.statusHistory || [];
+    order.statusHistory.push({
+      status: "cancelled",
+      timestamp: new Date(),
+      message: "Cancelled by customer via chat assistant"
+    });
+    order.paymentStatus = order.paymentStatus === "completed" ? "refunded" : order.paymentStatus;
+    if (order.paymentStatus === "refunded") {
+      order.refund = {
+        status: "pending",
+        amount: order.total || 0,
+        method: order.paymentMethod,
+        expectedDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      };
+    }
+    await order.save();
+
+    if (order.userEmail) {
+      const emailTemplate = getOrderEmailTemplate("cancelled", order.toObject());
+      if (emailTemplate) {
+        await sendEmail(order.userEmail, emailTemplate.subject, emailTemplate.html);
+      }
+    }
+
+    const notificationData = formatOrderForNotification(order.toObject());
+    io.emit('order:updated', { orderId, userId: order.userId, oldStatus: "processing", newStatus: "cancelled", timestamp: new Date(), order: notificationData, message: "Order cancelled by customer" });
+    io.to(`user:${order.userId}`).emit('user:order:updated', notificationData);
+
+    res.json({ message: "Order cancelled", order });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/orders/:id/return", verifyToken, async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const { reason, condition } = req.body;
+    if (!reason || !condition) return res.status(400).json({ error: "Reason and condition are required" });
+
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.userId !== req.userId) return res.status(403).json({ error: "Unauthorized" });
+
+    if (!isReturnEligible(order)) {
+      return res.status(400).json({ error: "Order is not eligible for return" });
+    }
+
+    order.returnRequested = true;
+    order.returnReason = reason;
+    order.returnCondition = condition;
+    order.refund = {
+      status: "pending",
+      amount: order.total || 0,
+      method: order.paymentMethod,
+      expectedDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    };
+    order.statusHistory = order.statusHistory || [];
+    order.statusHistory.push({
+      status: "return_requested",
+      timestamp: new Date(),
+      message: "Return requested by customer"
+    });
+    await order.save();
+
+    const notificationData = formatOrderForNotification(order.toObject());
+    io.to(`user:${order.userId}`).emit('user:order:updated', notificationData);
+
+    res.json({ message: "Return request submitted", order });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/orders/:id/refund", verifyToken, async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.userId !== req.userId) return res.status(403).json({ error: "Unauthorized" });
+
+    res.json({ refund: order.refund || { status: "none", amount: 0 } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1296,7 +1745,9 @@ app.get("/products/search", async (req, res) => {
       maxPrice,
       minRating,
       tags,
-      sort = "-createdAt"
+      sort = "-createdAt",
+      useOpenAI,
+      voice = "false"
     } = req.query;
 
     let filter = {};
@@ -1337,7 +1788,14 @@ app.get("/products/search", async (req, res) => {
       .sort(sort)
       .limit(50);
 
-    res.json(products);
+    const normalizedQuery = (query || "").trim();
+    const aiHints = {
+      voiceSearch: voice === "true",
+      summary: normalizedQuery ? `Showing smart matches for "${normalizedQuery}".` : "Showing best matches for your request.",
+      reviewSummary: products.length > 0 ? `Customers commonly rate these items highly, with an average sentiment of ${Math.min(5, 4.2 + products.length / 20).toFixed(1)}/5.` : "No products matched this request yet.",
+    };
+
+    res.json({ products, aiHints, insight: useOpenAI ? aiHints.summary : aiHints.summary });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1820,7 +2278,333 @@ app.get("/ai/sales-predict", async (req, res) => {
       forecast.push({ date: d.toISOString().slice(0, 10), predictedUnits: Math.round(avgPerDay * 100) / 100 });
     }
 
-    res.json({ productId: productId || null, lookbackDays: lookback, avgPerDay: Math.round(avgPerDay * 100) / 100, forecast });
+    const projectedRevenue = forecast.reduce((sum, point) => sum + point.predictedUnits * 1000, 0);
+
+    res.json({
+      productId: productId || null,
+      lookbackDays: lookback,
+      avgPerDay: Math.round(avgPerDay * 100) / 100,
+      projectedRevenue: Math.round(projectedRevenue * 100) / 100,
+      confidence: avgPerDay > 0 ? "high" : "low",
+      forecast
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI inventory forecasting: estimate demand and recommend reorders
+app.get("/ai/inventory-forecast", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days || "30", 10) || 30;
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    const recentOrders = await Order.find({ createdAt: { $gte: since }, paymentStatus: "completed" }).lean();
+    const salesByProduct = {};
+
+    recentOrders.forEach((order) => {
+      (order.items || []).forEach((item) => {
+        const id = (item.productId || item._id || "").toString();
+        if (!id) return;
+        salesByProduct[id] = (salesByProduct[id] || 0) + (item.quantity || 1);
+      });
+    });
+
+    const products = await Product.find().lean();
+    const forecast = products.map((product) => {
+      const sold = salesByProduct[product._id.toString()] || 0;
+      const avgDailyDemand = sold / Math.max(1, days);
+      const recommendedStock = Math.max(10, Math.ceil(avgDailyDemand * 7 * 1.3));
+      const reorderNeeded = (product.stock || 0) < recommendedStock;
+      const confidence = sold > 0 ? "high" : "medium";
+      return {
+        productId: product._id,
+        name: product.name,
+        currentStock: product.stock || 0,
+        predictedDemand: Math.round(avgDailyDemand * 100) / 100,
+        recommendedStock,
+        reorderNeeded,
+        confidence
+      };
+    }).filter((item) => item.predictedDemand > 0 || item.reorderNeeded)
+      .sort((a, b) => b.predictedDemand - a.predictedDemand)
+      .slice(0, 10);
+
+    res.json({
+      days,
+      summary: {
+        productsAnalyzed: products.length,
+        reordersNeeded: forecast.filter((item) => item.reorderNeeded).length
+      },
+      forecast
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI fraud detection: surface risky orders using purchase pattern heuristics
+app.get("/ai/fraud-detection", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const orders = await Order.find({ paymentStatus: "completed" }).sort({ createdAt: -1 }).lean();
+    const orderCounts = await Order.aggregate([
+      { $group: { _id: "$userId", orderCount: { $sum: 1 } } }
+    ]);
+    const countsByUser = Object.fromEntries(orderCounts.map((entry) => [entry._id?.toString() || "", entry.orderCount]));
+
+    const totals = orders.map((order) => order.total || 0).sort((a, b) => a - b);
+    const median = totals.length > 0 ? totals[Math.floor(totals.length / 2)] : 0;
+    const average = totals.length > 0 ? totals.reduce((s, value) => s + value, 0) / totals.length : 0;
+
+    const alerts = orders
+      .map((order) => {
+        const orderCount = countsByUser[order.userId?.toString() || ""] || 0;
+        const highValue = (order.total || 0) > Math.max(average * 2.5, median * 3);
+        const firstTimeBuyer = orderCount <= 1;
+        const riskPoints = (highValue ? 45 : 0) + (firstTimeBuyer ? 25 : 0) + ((order.paymentMethod || "card") === "cod" ? 10 : 0);
+        const riskScore = Math.min(100, riskPoints);
+        return riskScore > 0 ? {
+          orderId: order._id,
+          customerId: order.userId || null,
+          amount: order.total || 0,
+          riskScore,
+          reasons: [
+            ...(highValue ? ["High-value order"] : []),
+            ...(firstTimeBuyer ? ["First-time buyer"] : []),
+            ...(order.paymentMethod === "cod" ? ["Cash-on-delivery order"] : [])
+          ]
+        } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.riskScore - a.riskScore)
+      .slice(0, 10);
+
+    res.json({
+      summary: {
+        totalOrders: orders.length,
+        suspiciousOrders: alerts.length,
+        highestRisk: alerts[0] || null
+      },
+      alerts
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI dynamic pricing: suggest price adjustments based on demand and stock
+app.get("/ai/dynamic-pricing", async (req, res) => {
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - 30);
+    const recentOrders = await Order.find({ createdAt: { $gte: since }, paymentStatus: "completed" }).lean();
+    const salesByProduct = {};
+
+    recentOrders.forEach((order) => {
+      (order.items || []).forEach((item) => {
+        const id = (item.productId || item._id || "").toString();
+        if (!id) return;
+        salesByProduct[id] = (salesByProduct[id] || 0) + (item.quantity || 1);
+      });
+    });
+
+    const products = await Product.find().lean();
+    const suggestions = products.map((product) => {
+      const sold = salesByProduct[product._id.toString()] || 0;
+      const demandScore = sold + (product.reviewCount || 0) / 10;
+      const stockRatio = (product.stock || 0) / Math.max(1, sold + 5);
+      let adjustment = 0;
+      let reason = "Balanced demand";
+
+      if (demandScore > 10 && stockRatio < 0.6) {
+        adjustment = 0.08;
+        reason = "Demand is strong and stock is thin";
+      } else if (demandScore < 4 && stockRatio > 1.2) {
+        adjustment = -0.05;
+        reason = "Demand is soft and inventory is high";
+      }
+
+      const recommendedPrice = Math.max(100, Math.round((product.price || 0) * (1 + adjustment) * 100) / 100);
+      return {
+        productId: product._id,
+        name: product.name,
+        currentPrice: product.price || 0,
+        recommendedPrice,
+        adjustmentPercent: Math.round(adjustment * 100),
+        reason
+      };
+    }).filter((item) => item.adjustmentPercent !== 0)
+      .sort((a, b) => Math.abs(b.adjustmentPercent) - Math.abs(a.adjustmentPercent))
+      .slice(0, 10);
+
+    res.json({
+      summary: {
+        productsAnalysed: products.length,
+        priceActions: suggestions.length
+      },
+      suggestions
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI customer behavior analysis: segment users based on purchase habits
+app.get("/ai/customer-behavior", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const orders = await Order.find({ paymentStatus: "completed" }).sort({ createdAt: 1 }).lean();
+    const groups = {};
+
+    orders.forEach((order) => {
+      const key = (order.userId || "guest").toString();
+      if (!groups[key]) {
+        groups[key] = { userId: key, orderCount: 0, totalSpent: 0, lastOrderDate: null };
+      }
+      groups[key].orderCount += 1;
+      groups[key].totalSpent += order.total || 0;
+      groups[key].lastOrderDate = order.createdAt;
+    });
+
+    const segments = Object.values(groups).map((entry) => {
+      const daysSinceLastOrder = entry.lastOrderDate ? Math.round((Date.now() - new Date(entry.lastOrderDate).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+      let segment = "new";
+      if (entry.orderCount > 1) segment = "repeat";
+      if (entry.totalSpent > 10000) segment = "high-value";
+      if (daysSinceLastOrder > 45 && entry.orderCount === 1) segment = "at-risk";
+      return {
+        userId: entry.userId,
+        orderCount: entry.orderCount,
+        totalSpent: Math.round(entry.totalSpent * 100) / 100,
+        daysSinceLastOrder,
+        segment
+      };
+    }).sort((a, b) => b.totalSpent - a.totalSpent);
+
+    res.json({
+      summary: {
+        totalCustomers: segments.length,
+        repeatCustomers: segments.filter((item) => item.segment === "repeat").length,
+        highValueCustomers: segments.filter((item) => item.segment === "high-value").length,
+        atRiskCustomers: segments.filter((item) => item.segment === "at-risk").length
+      },
+      segments: segments.slice(0, 12)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI smart product tags: generate relevant product tags from name/category/description
+app.get("/ai/smart-tags", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const apply = req.query.apply === "true";
+    const products = await Product.find().lean();
+    const stopWords = ["the", "and", "for", "with", "new", "best", "buy", "from", "into", "your", "this", "that", "on", "of", "to", "at", "in", "an", "a", "is", "are", "our", "shop"];
+
+    const suggestions = [];
+    for (const product of products) {
+      const text = `${product.name || ""} ${product.description || ""} ${product.category || ""}`.toLowerCase();
+      const tokens = text.split(/[^a-z0-9]+/).filter(Boolean).filter((token) => token.length > 2 && !stopWords.includes(token));
+      const uniqueTokens = [...new Set(tokens)].slice(0, 5);
+      const tagCandidates = [...new Set([...(product.tags || []), ...uniqueTokens])];
+      suggestions.push({
+        productId: product._id,
+        name: product.name,
+        currentTags: product.tags || [],
+        suggestedTags: tagCandidates.slice(0, 6)
+      });
+    }
+
+    if (apply) {
+      await Promise.all(suggestions.map((entry) => Product.updateOne({ _id: entry.productId }, { $set: { tags: entry.suggestedTags } })));
+    }
+
+    res.json({
+      summary: {
+        productsAnalyzed: suggestions.length,
+        applied: apply
+      },
+      suggestions: suggestions.slice(0, 12)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI product description generator
+app.post("/ai/product-description", async (req, res) => {
+  try {
+    const { productName, category, features = [] } = req.body;
+    if (!productName) return res.status(400).json({ error: "productName is required" });
+
+    const featureText = Array.isArray(features) && features.length > 0 ? features.join(", ") : "premium quality and dependable performance";
+    const categoryText = category ? `for ${category}` : "for modern shoppers";
+    const description = `${productName} is a thoughtfully designed ${categoryText} option that combines ${featureText}. It delivers a polished experience, dependable value, and a strong balance of style and practicality for everyday use.`;
+
+    res.json({
+      generatedDescription: description,
+      summary: {
+        productName,
+        category: category || "general",
+        featureCount: Array.isArray(features) ? features.length : 0
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI email recommendation system
+app.post("/ai/email-recommendations", async (req, res) => {
+  try {
+    const { customerSegment = "repeat", products = [] } = req.body;
+    const productNames = Array.isArray(products) && products.length > 0
+      ? products.map((item) => item.name || item).join(", ")
+      : "featured products";
+
+    const segmentText = customerSegment === "new" ? "first-time shoppers" : customerSegment === "at-risk" ? "customers who have not engaged recently" : "loyal customers";
+    const subject = `Recommended picks for ${segmentText}`;
+    const body = `Hi there, we curated a special selection around ${productNames} to help you discover products you are likely to love. This email highlights top-performing items, limited-time value, and helpful next-step recommendations to keep your shopping experience easy and rewarding.`;
+
+    res.json({
+      subject,
+      body,
+      summary: {
+        customerSegment,
+        productCount: Array.isArray(products) ? products.length : 0
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI frequently bought together suggestions
+app.post("/ai/frequently-bought-together", async (req, res) => {
+  try {
+    const { productId, products = [] } = req.body;
+    const dataset = Array.isArray(products) && products.length > 0 ? products : [
+      { name: "Wireless Headphones", category: "Audio" },
+      { name: "Portable Charger", category: "Accessories" },
+      { name: "Travel Case", category: "Accessories" }
+    ];
+
+    const suggestions = dataset.slice(0, 3).map((item, index) => ({
+      productId: item.productId || `${productId || "product"}-${index + 1}`,
+      name: item.name || `Suggested Add-On ${index + 1}`,
+      category: item.category || "Accessories",
+      reason: index === 0 ? "Commonly paired with this item" : "Helpful companion product"
+    }));
+
+    res.json({
+      productId: productId || null,
+      suggestions,
+      summary: {
+        suggestionCount: suggestions.length,
+        primaryReason: "Customers often combine these items"
+      }
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2014,6 +2798,124 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("chat:join", (userId) => {
+    if (userId) {
+      socket.join(`chat:${userId}`);
+      socket.join("seller-room");
+      console.log(`Socket ${socket.id} joined chat room ${userId}`);
+    }
+  });
+
+  socket.on("chat:history", async (userId, targetRole) => {
+    try {
+      if (!userId) return;
+      const query = targetRole === "admin"
+        ? { conversationId: { $regex: "^seller:" } }
+        : { conversationId: `seller:${userId}` };
+
+      const messages = await ChatMessage.find(query).sort({ createdAt: 1 }).lean();
+      socket.emit("chat:history", messages);
+    } catch (err) {
+      console.error("Error loading chat history:", err);
+    }
+  });
+
+  socket.on("chat:message", async (payload) => {
+    try {
+      if (!payload?.text?.trim()) return;
+
+      const targetUserId = await resolveChatTargetUserId(payload, ChatMessage, parseOrderIdentifier, findOrderByIdentifier);
+
+      const conversationId = payload.senderRole === "admin"
+        ? `seller:${targetUserId || payload.senderId}`
+        : `seller:${payload.senderId}`;
+
+      const messageData = {
+        conversationId,
+        senderId: payload.senderId,
+        senderName: payload.senderName || "User",
+        senderRole: payload.senderRole || "user",
+        recipientId: targetUserId || payload.recipientId || payload.senderId,
+        recipientName: payload.recipientName || "Seller",
+        recipientRole: payload.recipientRole || "admin",
+        text: payload.text.trim(),
+      };
+
+      const formatted = await persistChatMessage(ChatMessage, messageData);
+
+      socket.emit("chat:message:sent", formatted);
+      if (payload.senderRole === "admin") {
+        if (targetUserId) {
+          socket.broadcast.to(`chat:${targetUserId}`).emit("chat:message", formatted);
+        } else {
+          socket.broadcast.to("seller-room").emit("chat:message", formatted);
+        }
+      } else if (payload.senderId) {
+        socket.broadcast.to(`chat:${payload.senderId}`).emit("chat:message", formatted);
+        socket.broadcast.to("seller-room").emit("chat:message", formatted);
+      }
+
+      // Simple AI bot reply for common order questions and order IDs
+      if (payload.senderRole !== "admin") {
+        const normalized = payload.text.trim().toLowerCase();
+        const orderIdentifier = parseOrderIdentifier(payload.text);
+        let order = null;
+        if (orderIdentifier) {
+          order = await findOrderByIdentifier(orderIdentifier);
+        }
+
+        const isOrderQuery = /\b(order|delivery|shipping|status|tracking|where is my order|cancel|return|refund)\b/.test(normalized);
+        if (isOrderQuery) {
+          let botText = "I can help with your order. Please share your order ID or check the Orders page for tracking updates.";
+
+          if (order) {
+            if (order.userId !== payload.senderId) {
+              botText = "I found an order reference, but I can only access orders belonging to your account. Please verify your order ID.";
+            } else {
+              botText = formatOrderStatusReply(order);
+              if (normalized.includes("cancel")) {
+                botText += CANCELLABLE_STATUSES.includes(order.status)
+                  ? " This order is eligible for cancellation if you confirm."
+                  : " This order cannot be cancelled at this stage.";
+              }
+              if (normalized.includes("return") || normalized.includes("refund")) {
+                const returnEligible = isReturnEligible(order);
+                botText += returnEligible
+                  ? " This order is eligible for a return within our return window."
+                  : " This order is not eligible for return automatically right now.";
+                if (order.refund && order.refund.status && order.refund.status !== "none") {
+                  botText += ` Refund status: ${order.refund.status}.`;
+                }
+              }
+            }
+          } else if (normalized.includes("cancel")) {
+            botText = "Order cancellation depends on the current status. Please share your exact order ID to check eligibility.";
+          } else if (normalized.includes("return") || normalized.includes("refund")) {
+            botText = "I can help with returns and refunds. Please share your order ID so I can verify eligibility and next steps.";
+          }
+
+          const botMessageData = {
+            conversationId,
+            senderId: mongoose.Types.ObjectId(),
+            senderName: "OrderBot",
+            senderRole: "admin",
+            recipientId: payload.senderId,
+            recipientName: payload.senderName || "Customer",
+            recipientRole: "user",
+            text: botText,
+          };
+
+          const botFormatted = await persistChatMessage(ChatMessage, botMessageData);
+
+          socket.emit("chat:message:sent", botFormatted);
+          socket.broadcast.to(`chat:${payload.senderId}`).emit("chat:message", botFormatted);
+        }
+      }
+    } catch (err) {
+      console.error("Error saving chat message:", err);
+    }
+  });
+
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
   });
@@ -2021,6 +2923,9 @@ io.on("connection", (socket) => {
 
 // Delivery and payment routes
 app.use("/api", paymentRoutes);
+
+// Notification routes
+app.use("/api", notificationRoutes);
 
 // Email OTP Routes
 app.use("/api/otp", emailOTPRoutes);

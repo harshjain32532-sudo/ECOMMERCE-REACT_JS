@@ -13,6 +13,8 @@ import AdminPanel from "./components/AdminPanel.jsx";
 import Orders from "./pages/Orders.jsx";
 import Profile from "./pages/Profile.jsx";
 import Wishlist from "./pages/Wishlist.jsx";
+import SellerChat from "./components/SellerChat.jsx";
+import NotificationCenter from "./components/NotificationCenter.jsx";
 import { getCart, saveCart, getWishlist, addToWishlist, removeFromWishlist, getProfile } from "./api.js";
 
 function App() {
@@ -225,6 +227,8 @@ function App() {
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/wishlist" element={<Wishlist />} />
+                <Route path="/chat" element={<SellerChat />} />
+                <Route path="/notifications" element={<NotificationCenter />} />
             </Routes>
         </BrowserRouter>
     );

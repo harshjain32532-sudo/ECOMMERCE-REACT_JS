@@ -5,59 +5,58 @@ A comprehensive One-Time Password (OTP) system has been implemented in your ecom
 
 ## ✅ What's Been Implemented
 
-### Backend Features
-1. **OTP Model** (`backend/models/otp.js`)
-   - Database schema for storing OTP records
-   - Auto-expiration after 10 minutes
-   - Attempt tracking (max 5 attempts)
-   - Multiple OTP types and purposes
+### <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My First HTML Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            text-align: center;
+            margin: 50px;
+        }
 
-2. **OTP Service** (`backend/services/otpService.js`)
-   - Generate random OTPs
-   - Send OTP via Email
-   - Verify OTP with attempt limiting
-   - Resend OTP functionality
-   - Auto-cleanup of expired OTPs
-   - Support for SMS (requires Twilio setup)
+        h1 {
+            color: #007BFF;
+        }
 
-3. **OTP Routes** (`backend/routes/emailOTP.js`)
-   - `POST /api/otp/send` - Send OTP
-   - `POST /api/otp/verify` - Verify OTP
-   - `POST /api/otp/resend` - Resend OTP
+        p {
+            color: #555;
+        }
 
-4. **Authentication Routes** (`backend/routes/auth.js`)
-   - `POST /api/auth/register` - Register with OTP
-   - `POST /api/auth/verify-otp-signup` - Verify signup OTP
-   - `POST /api/auth/login` - Login (with optional 2FA)
-   - `POST /api/auth/verify-otp-login` - Verify login OTP for 2FA
-   - `POST /api/auth/forgot-password` - Request password reset OTP
-   - `POST /api/auth/reset-password` - Reset password using OTP
-   - `GET /api/auth/profile` - Get user profile
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
 
-### Frontend Components
-1. **OTPInput Component** (`frontend/src/components/OTPInput.jsx`)
-   - 6-digit OTP input with auto-focus
-   - Timer display (10 minutes)
-   - Paste support
-   - Keyboard navigation (arrow keys, backspace)
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
 
-2. **OTPVerification Page** (`frontend/src/pages/OTPVerification.jsx`)
-   - OTP input interface
-   - Auto-navigation based on purpose
-   - Resend OTP functionality
-   - Error handling
+    <h1>Welcome to HTML!</h1>
+    <p>This is a simple HTML page with CSS and JavaScript.</p>
 
-3. **RegisterOTP Page** (`frontend/src/pages/RegisterOTP.jsx`)
-   - User registration form
-   - Step indicator (3 steps)
-   - Integration with OTP system
-   - Terms and conditions acceptance
+    <button onclick="showMessage()">Click Me</button>
 
-4. **OTPPasswordSetup Page** (`frontend/src/pages/OTPPasswordSetup.jsx`)
-   - Password creation after OTP verification
-   - Password strength indicator
-   - Password requirements validation
-   - Confirm password matching
+    <script>
+        function showMessage() {
+            alert("Hello! You clicked the button.");
+        }
+    </script>
+
+</body>
+</html>
 
 ### Styling
 - `frontend/src/styles/OTPInput.css` - Input component styles

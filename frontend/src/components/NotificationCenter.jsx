@@ -215,13 +215,15 @@ const NotificationCenter = () => {
                             <h2>📋 Notification Categories</h2>
                             {[
                                 { key: 'orderUpdates', label: 'Order Updates', icon: '📦' },
-                                { key: 'promotions', label: 'Promotions & Offers', icon: '🎉' },
+                                { key: 'paymentUpdates', label: 'Payment Confirmation', icon: '💳' },
+                                { key: 'deliveryUpdates', label: 'Shipping Notification', icon: '🚚' },
+                                { key: 'promotions', label: 'Promotional Offers', icon: '🎉' },
+                                { key: 'priceDrops', label: 'Price Drop Alerts', icon: '📉' },
+                                { key: 'backInStock', label: 'Back in Stock Alerts', icon: '✨' },
                                 { key: 'productRecommendations', label: 'Product Recommendations', icon: '💡' },
                                 { key: 'reviews', label: 'Review Requests', icon: '⭐' },
-                                { key: 'wishlistNotifications', label: 'Wishlist Price Drops', icon: '❤️' },
-                                { key: 'newsletter', label: 'Newsletter', icon: '📰' },
-                                { key: 'paymentUpdates', label: 'Payment Updates', icon: '💳' },
-                                { key: 'deliveryUpdates', label: 'Delivery Updates', icon: '🚚' }
+                                { key: 'wishlistNotifications', label: 'Wishlist Alerts', icon: '❤️' },
+                                { key: 'newsletter', label: 'Newsletter', icon: '📰' }
                             ].map((category) => (
                                 <div key={category.key} className="preference-option">
                                     <label>

@@ -83,6 +83,12 @@ export const getOrders = () => api.get("/orders");
 export const getOrder = (id) => api.get(`/orders/${id}`);
 export const createOrder = (data) => api.post("/orders", data);
 export const updateOrder = (id, data) => api.put(`/orders/${id}`, data);
+export const cancelOrder = (id) => api.post(`/orders/${id}/cancel`);
+export const requestReturn = (id, data) => api.post(`/orders/${id}/return`, data);
+export const getOrderRefund = (id) => api.get(`/orders/${id}/refund`);
+export const aiOrderAssistant = (orderId, message) => api.post("/ai/order-assistant", { orderId, message });
+export const aiReturnAssistant = (orderId, message, action, options = {}) =>
+    api.post("/ai/return-assistant", { orderId, message, action, useOpenAI: options.useOpenAI });
 export const getAdminOrders = () => api.get("/admin/orders");
 export const getAdminProductOrders = () => api.get("/admin/product-orders");
 export const updateAdminOrderStatus = (orderId, status, message) =>
@@ -92,6 +98,23 @@ export const updateDeliveryDate = (orderId, deliveredAt, trackingNumber) =>
     api.put(`/admin/delivery/${orderId}`, { deliveredAt, trackingNumber });
 
 export const getAdminStats = () => api.get("/admin/stats");
+export const getAdminCategories = () => api.get("/admin/categories");
+export const createAdminCategory = (data) => api.post("/admin/categories", data);
+export const updateAdminCategory = (id, data) => api.put(`/admin/categories/${id}`, data);
+export const deleteAdminCategory = (id) => api.delete(`/admin/categories/${id}`);
+export const getAdminBrands = () => api.get("/admin/brands");
+export const createAdminBrand = (data) => api.post("/admin/brands", data);
+export const updateAdminBrand = (id, data) => api.put(`/admin/brands/${id}`, data);
+export const deleteAdminBrand = (id) => api.delete(`/admin/brands/${id}`);
+export const getAdminUsers = () => api.get("/admin/users");
+export const updateAdminUserRole = (id, role) => api.put(`/admin/users/${id}/role`, { role });
+export const deleteAdminUser = (id) => api.delete(`/admin/users/${id}`);
+export const getAdminCoupons = () => api.get("/admin/coupons");
+export const createAdminCoupon = (data) => api.post("/admin/coupons", data);
+export const updateAdminCoupon = (id, data) => api.put(`/admin/coupons/${id}`, data);
+export const deleteAdminCoupon = (id) => api.delete(`/admin/coupons/${id}`);
+export const getAdminInventory = () => api.get("/admin/inventory");
+export const updateAdminInventory = (productId, data) => api.put(`/admin/inventory/${productId}`, data);
 
 // OTP & SMS Verification
 export const sendOTP = (phone, provider = "twilio") =>
@@ -159,17 +182,3 @@ export const getCustomerAnalytics = () =>
 export const getProductAnalytics = () =>
     api.get("/admin/analytics/products");
 
-// ========== AI Endpoints ==========
-export const aiGetRecommendations = () => api.get("/ai/recommendations");
-export const aiChat = (message) => api.post("/ai/chat", { message });
-export const aiChatOpenAI = (message, history = []) => api.post("/ai/chat-openai", { message, history });
-export const aiOrderAssistant = (orderId, message = '') => api.post('/ai/order-assistant', { orderId, message });
-export const aiReturnAssistant = (orderId, message = '', action = null, opts = {}) => api.post('/ai/return-assistant', { orderId, message, action, ...opts });
-export const aiSearch = (q) => api.get("/ai/search", { params: { q } });
-export const getSalesPrediction = (opts = {}) => api.get("/ai/sales-predict", { params: opts });
-export const aiSearchAdvanced = (q, opts = {}) => api.get('/ai/search-advanced', { params: { q, ...opts } });
-export const aiImageSearch = (file) => {
-    const form = new FormData();
-    form.append('image', file);
-    return api.post('/ai/image-search', form, { headers: { 'Content-Type': 'multipart/form-data' } });
-};

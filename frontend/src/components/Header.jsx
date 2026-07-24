@@ -16,6 +16,8 @@ function Header({ cartCount = 0, wishlistCount = 0, isLoggedIn = false, isAdmin 
     ];
 
     if (isLoggedIn) {
+        navItems.push({ to: "/chat", label: "Chat" });
+        navItems.push({ to: "/notifications", label: "Notifications" });
         navItems.push({ to: "/profile", label: "Profile" });
         navItems.push({ to: "/orders", label: "Orders" });
         if (isAdmin) {

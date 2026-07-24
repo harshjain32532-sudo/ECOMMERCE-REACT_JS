@@ -1,7 +1,31 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { getCustomers, getAdminOrders, getAdminProductOrders, updateAdminOrderStatus, getAdminDeliveryTracking, updateDeliveryDate } from "../api.js";
+import {
+    getCustomers,
+    getAdminOrders,
+    getAdminProductOrders,
+    updateAdminOrderStatus,
+    getAdminDeliveryTracking,
+    updateDeliveryDate,
+    getAdminCategories,
+    createAdminCategory,
+    updateAdminCategory,
+    deleteAdminCategory,
+    getAdminBrands,
+    createAdminBrand,
+    updateAdminBrand,
+    deleteAdminBrand,
+    getAdminUsers,
+    updateAdminUserRole,
+    deleteAdminUser,
+    getAdminCoupons,
+    createAdminCoupon,
+    updateAdminCoupon,
+    deleteAdminCoupon,
+    getAdminInventory,
+    updateAdminInventory
+} from "../api.js";
 import "../styles/AdminPanel.css";
 
 function AdminPanel() {
@@ -39,9 +63,28 @@ function AdminPanel() {
         price: "",
         originalPrice: "",
         category: "Electronics",
+        brand: "Generic",
         stock: "10",
         image: "",
     });
+    const [categories, setCategories] = useState([]);
+    const [brands, setBrands] = useState([]);
+    const [users, setUsers] = useState([]);
+    const [coupons, setCoupons] = useState([]);
+    const [inventory, setInventory] = useState([]);
+    const [inventorySummary, setInventorySummary] = useState({ totalProducts: 0, lowStock: 0, outOfStock: 0 });
+    const [catalogForm, setCatalogForm] = useState({ type: "category", name: "" });
+    const [editingCatalogId, setEditingCatalogId] = useState(null);
+    const [couponForm, setCouponForm] = useState({
+        code: "",
+        description: "",
+        discountType: "percentage",
+        discountValue: "",
+        minPurchaseAmount: "",
+        expiryDate: "",
+        isActive: true,
+    });
+    const [editingCouponId, setEditingCouponId] = useState(null);
 
     // Show toast notification
     const showToast = (text, type = "success") => {
@@ -75,6 +118,14 @@ function AdminPanel() {
             fetchOrders();
         } else if (activeTab === "product-orders") {
             fetchProductOrders();
+        } else if (activeTab === "catalog") {
+            fetchCatalogData();
+        } else if (activeTab === "coupons") {
+            fetchCoupons();
+        } else if (activeTab === "inventory") {
+            fetchInventory();
+        } else if (activeTab === "users") {
+            fetchUsers();
         }
     }, [activeTab]);
 
@@ -133,6 +184,219 @@ function AdminPanel() {
             showToast("Product orders loaded successfully", "success");
         } catch (error) {
             showToast("Failed to fetch product orders", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchCatalogData = async () => {
+        try {
+            setLoading(true);
+            const [categoriesRes, brandsRes] = await Promise.all([getAdminCategories(), getAdminBrands()]);
+            setCategories(categoriesRes.data || []);
+            setBrands(brandsRes.data || []);
+        } catch (error) {
+            showToast("Failed to load catalog data", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchCoupons = async () => {
+        try {
+            setLoading(true);
+            const response = await getAdminCoupons();
+            setCoupons(response.data || []);
+        } catch (error) {
+            showToast("Failed to load coupons", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchInventory = async () => {
+        try {
+            setLoading(true);
+            const response = await getAdminInventory();
+            setInventory(response.data?.products || []);
+            setInventorySummary(response.data?.summary || { totalProducts: 0, lowStock: 0, outOfStock: 0 });
+        } catch (error) {
+            showToast("Failed to load inventory", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchUsers = async () => {
+        try {
+            setLoading(true);
+            const response = await getAdminUsers();
+            setUsers(response.data || []);
+        } catch (error) {
+            showToast("Failed to load users", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCatalogSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            setLoading(true);
+            const payload = { name: catalogForm.name.trim() };
+            if (!payload.name) {
+                showToast("Name is required", "error");
+                return;
+            }
+            if (catalogForm.type === "category") {
+                if (editingCatalogId) {
+                    await updateAdminCategory(editingCatalogId, payload);
+                } else {
+                    await createAdminCategory(payload);
+                }
+            } else {
+                if (editingCatalogId) {
+                    await updateAdminBrand(editingCatalogId, payload);
+                } else {
+                    await createAdminBrand(payload);
+                }
+            }
+            showToast(`${catalogForm.type === "category" ? "Category" : "Brand"} saved successfully`, "success");
+            setCatalogForm({ type: catalogForm.type, name: "" });
+            setEditingCatalogId(null);
+            await fetchCatalogData();
+        } catch (error) {
+            showToast(error.response?.data?.error || "Failed to save item", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleEditCatalog = (type, item) => {
+        setCatalogForm({ type, name: item.name });
+        setEditingCatalogId(item._id || item.id);
+    };
+
+    const handleDeleteCatalog = async (type, item) => {
+        if (!window.confirm(`Delete this ${type}?`)) return;
+        try {
+            setLoading(true);
+            if (type === "category") {
+                await deleteAdminCategory(item._id || item.id);
+            } else {
+                await deleteAdminBrand(item._id || item.id);
+            }
+            showToast(`${type === "category" ? "Category" : "Brand"} deleted`, "success");
+            await fetchCatalogData();
+        } catch (error) {
+            showToast(error.response?.data?.error || "Failed to delete item", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCouponSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            setLoading(true);
+            const payload = {
+                code: couponForm.code.trim().toUpperCase(),
+                description: couponForm.description.trim(),
+                discountType: couponForm.discountType,
+                discountValue: Number(couponForm.discountValue),
+                minPurchaseAmount: Number(couponForm.minPurchaseAmount) || 0,
+                expiryDate: couponForm.expiryDate || undefined,
+                isActive: couponForm.isActive,
+            };
+            if (!payload.code || !payload.discountValue) {
+                showToast("Code and discount value are required", "error");
+                return;
+            }
+            if (editingCouponId) {
+                await updateAdminCoupon(editingCouponId, payload);
+            } else {
+                await createAdminCoupon(payload);
+            }
+            showToast("Coupon saved successfully", "success");
+            setCouponForm({ code: "", description: "", discountType: "percentage", discountValue: "", minPurchaseAmount: "", expiryDate: "", isActive: true });
+            setEditingCouponId(null);
+            await fetchCoupons();
+        } catch (error) {
+            showToast(error.response?.data?.error || "Failed to save coupon", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleEditCoupon = (coupon) => {
+        setEditingCouponId(coupon._id);
+        setCouponForm({
+            code: coupon.code || "",
+            description: coupon.description || "",
+            discountType: coupon.discountType || "percentage",
+            discountValue: coupon.discountValue || "",
+            minPurchaseAmount: coupon.minPurchaseAmount || "",
+            expiryDate: coupon.expiryDate ? new Date(coupon.expiryDate).toISOString().split("T")[0] : "",
+            isActive: coupon.isActive !== false,
+        });
+    };
+
+    const handleDeleteCoupon = async (coupon) => {
+        if (!window.confirm("Delete this coupon?")) return;
+        try {
+            setLoading(true);
+            await deleteAdminCoupon(coupon._id);
+            showToast("Coupon deleted", "success");
+            await fetchCoupons();
+        } catch (error) {
+            showToast(error.response?.data?.error || "Failed to delete coupon", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleInventoryUpdate = async (product) => {
+        try {
+            const newStock = window.prompt("Enter new stock quantity", product.stock || 0);
+            if (newStock === null) return;
+            const stockValue = Number(newStock);
+            if (Number.isNaN(stockValue)) {
+                showToast("Please enter a valid number", "error");
+                return;
+            }
+            setLoading(true);
+            await updateAdminInventory(product._id, { stock: stockValue });
+            showToast("Inventory updated", "success");
+            await fetchInventory();
+        } catch (error) {
+            showToast(error.response?.data?.error || "Failed to update inventory", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUserRoleChange = async (userId, role) => {
+        try {
+            setLoading(true);
+            await updateAdminUserRole(userId, role);
+            showToast("User role updated", "success");
+            await fetchUsers();
+        } catch (error) {
+            showToast(error.response?.data?.error || "Failed to update role", "error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteUser = async (user) => {
+        if (!window.confirm(`Delete ${user.name || user.email}?`)) return;
+        try {
+            setLoading(true);
+            await deleteAdminUser(user._id);
+            showToast("User deleted", "success");
+            await fetchUsers();
+        } catch (error) {
+            showToast(error.response?.data?.error || "Failed to delete user", "error");
         } finally {
             setLoading(false);
         }
@@ -474,10 +738,40 @@ function AdminPanel() {
                         🛒 Orders
                     </button>
                     <button
-                        className={`nav-item ${activeTab === "users" ? "active" : ""}`}
-                        onClick={() => setActiveTab("users")}
+                        className={`nav-item ${activeTab === "catalog" ? "active" : ""}`}
+                        onClick={() => {
+                            setActiveTab("catalog");
+                            fetchCatalogData();
+                        }}
                     >
-                        🔧 Settings
+                        🗂️ Catalog
+                    </button>
+                    <button
+                        className={`nav-item ${activeTab === "coupons" ? "active" : ""}`}
+                        onClick={() => {
+                            setActiveTab("coupons");
+                            fetchCoupons();
+                        }}
+                    >
+                        🎟️ Coupons
+                    </button>
+                    <button
+                        className={`nav-item ${activeTab === "inventory" ? "active" : ""}`}
+                        onClick={() => {
+                            setActiveTab("inventory");
+                            fetchInventory();
+                        }}
+                    >
+                        📦 Inventory
+                    </button>
+                    <button
+                        className={`nav-item ${activeTab === "users" ? "active" : ""}`}
+                        onClick={() => {
+                            setActiveTab("users");
+                            fetchUsers();
+                        }}
+                    >
+                        👤 Users
                     </button>
                 </nav>
 
@@ -509,7 +803,10 @@ function AdminPanel() {
                             {activeTab === "delivered" && "Delivered Products"}
                             {activeTab === "product-orders" && "Product Orders Management"}
                             {activeTab === "orders" && "Orders"}
-                            {activeTab === "users" && "Settings"}
+                            {activeTab === "catalog" && "Catalog Management"}
+                            {activeTab === "coupons" && "Coupon Management"}
+                            {activeTab === "inventory" && "Inventory Management"}
+                            {activeTab === "users" && "User Management"}
                         </h1>
                     </div>
                     <div className="header-right">
@@ -1205,12 +1502,240 @@ function AdminPanel() {
                     </div>
                 )}
 
+                {/* Catalog Tab */}
+                {activeTab === "catalog" && (
+                    <section className="catalog-section">
+                        <div className="section-header">
+                            <h2>🗂️ Catalog Management</h2>
+                        </div>
+                        <form onSubmit={handleCatalogSubmit} className="product-form">
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Type</label>
+                                    <select value={catalogForm.type} onChange={(e) => setCatalogForm({ ...catalogForm, type: e.target.value })}>
+                                        <option value="category">Category</option>
+                                        <option value="brand">Brand</option>
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label>Name</label>
+                                    <input type="text" value={catalogForm.name} onChange={(e) => setCatalogForm({ ...catalogForm, name: e.target.value })} placeholder="Enter name" />
+                                </div>
+                            </div>
+                            <div className="form-actions">
+                                <button type="submit" className="btn-submit">{editingCatalogId ? "Update" : "Create"}</button>
+                                {editingCatalogId && <button type="button" className="btn-cancel" onClick={() => { setEditingCatalogId(null); setCatalogForm({ type: catalogForm.type, name: "" }); }}>Cancel</button>}
+                            </div>
+                        </form>
+                        <div className="catalog-grid">
+                            <div className="catalog-card">
+                                <h3>Categories</h3>
+                                <ul>
+                                    {categories.map((item) => (
+                                        <li key={item._id || item.id}>
+                                            <span>{item.name}</span>
+                                            <div>
+                                                <button className="btn-edit" onClick={() => handleEditCatalog("category", item)}>Edit</button>
+                                                <button className="btn-delete" onClick={() => handleDeleteCatalog("category", item)}>Delete</button>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <div className="catalog-card">
+                                <h3>Brands</h3>
+                                <ul>
+                                    {brands.map((item) => (
+                                        <li key={item._id || item.id}>
+                                            <span>{item.name}</span>
+                                            <div>
+                                                <button className="btn-edit" onClick={() => handleEditCatalog("brand", item)}>Edit</button>
+                                                <button className="btn-delete" onClick={() => handleDeleteCatalog("brand", item)}>Delete</button>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+                )}
+
+                {/* Coupons Tab */}
+                {activeTab === "coupons" && (
+                    <section className="coupons-section">
+                        <div className="section-header">
+                            <h2>🎟️ Coupon Management</h2>
+                        </div>
+                        <form onSubmit={handleCouponSubmit} className="product-form">
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Code</label>
+                                    <input type="text" value={couponForm.code} onChange={(e) => setCouponForm({ ...couponForm, code: e.target.value })} placeholder="SAVE10" />
+                                </div>
+                                <div className="form-group">
+                                    <label>Description</label>
+                                    <input type="text" value={couponForm.description} onChange={(e) => setCouponForm({ ...couponForm, description: e.target.value })} placeholder="Holiday offer" />
+                                </div>
+                            </div>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Discount Type</label>
+                                    <select value={couponForm.discountType} onChange={(e) => setCouponForm({ ...couponForm, discountType: e.target.value })}>
+                                        <option value="percentage">Percentage</option>
+                                        <option value="fixed">Fixed</option>
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label>Discount Value</label>
+                                    <input type="number" value={couponForm.discountValue} onChange={(e) => setCouponForm({ ...couponForm, discountValue: e.target.value })} placeholder="10" />
+                                </div>
+                                <div className="form-group">
+                                    <label>Minimum Purchase</label>
+                                    <input type="number" value={couponForm.minPurchaseAmount} onChange={(e) => setCouponForm({ ...couponForm, minPurchaseAmount: e.target.value })} placeholder="500" />
+                                </div>
+                            </div>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Expiry Date</label>
+                                    <input type="date" value={couponForm.expiryDate} onChange={(e) => setCouponForm({ ...couponForm, expiryDate: e.target.value })} />
+                                </div>
+                                <div className="form-group">
+                                    <label>Status</label>
+                                    <select value={couponForm.isActive ? "active" : "inactive"} onChange={(e) => setCouponForm({ ...couponForm, isActive: e.target.value === "active" })}>
+                                        <option value="active">Active</option>
+                                        <option value="inactive">Inactive</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="form-actions">
+                                <button type="submit" className="btn-submit">{editingCouponId ? "Update" : "Create"}</button>
+                                {editingCouponId && <button type="button" className="btn-cancel" onClick={() => { setEditingCouponId(null); setCouponForm({ code: "", description: "", discountType: "percentage", discountValue: "", minPurchaseAmount: "", expiryDate: "", isActive: true }); }}>Cancel</button>}
+                            </div>
+                        </form>
+                        <div className="table-responsive">
+                            <table className="products-table">
+                                <thead>
+                                    <tr>
+                                        <th>Code</th>
+                                        <th>Description</th>
+                                        <th>Discount</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {coupons.map((coupon) => (
+                                        <tr key={coupon._id}>
+                                            <td>{coupon.code}</td>
+                                            <td>{coupon.description}</td>
+                                            <td>{coupon.discountType === "percentage" ? `${coupon.discountValue}%` : `₹${coupon.discountValue}`}</td>
+                                            <td>{coupon.isActive ? "Active" : "Inactive"}</td>
+                                            <td>
+                                                <button className="btn-edit" onClick={() => handleEditCoupon(coupon)}>Edit</button>
+                                                <button className="btn-delete" onClick={() => handleDeleteCoupon(coupon)}>Delete</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                )}
+
+                {/* Inventory Tab */}
+                {activeTab === "inventory" && (
+                    <section className="inventory-section">
+                        <div className="section-header">
+                            <h2>📦 Inventory Management</h2>
+                        </div>
+                        <div className="stats-grid">
+                            <div className="stat-card">
+                                <div className="stat-icon">📦</div>
+                                <div className="stat-content">
+                                    <h3>Total Products</h3>
+                                    <p className="stat-value">{inventorySummary.totalProducts}</p>
+                                </div>
+                            </div>
+                            <div className="stat-card">
+                                <div className="stat-icon">⚠️</div>
+                                <div className="stat-content">
+                                    <h3>Low Stock</h3>
+                                    <p className="stat-value">{inventorySummary.lowStock}</p>
+                                </div>
+                            </div>
+                            <div className="stat-card">
+                                <div className="stat-icon">❌</div>
+                                <div className="stat-content">
+                                    <h3>Out of Stock</h3>
+                                    <p className="stat-value">{inventorySummary.outOfStock}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="table-responsive">
+                            <table className="products-table">
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Category</th>
+                                        <th>Brand</th>
+                                        <th>Stock</th>
+                                        <th>Price</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {inventory.map((product) => (
+                                        <tr key={product._id}>
+                                            <td>{product.name}</td>
+                                            <td>{product.category}</td>
+                                            <td>{product.brand || "Generic"}</td>
+                                            <td>{product.stock}</td>
+                                            <td>₹{(product.price || 0).toLocaleString()}</td>
+                                            <td><button className="btn-edit" onClick={() => handleInventoryUpdate(product)}>Adjust Stock</button></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                )}
+
                 {/* Users Tab */}
                 {activeTab === "users" && (
-                    <section className="coming-soon">
-                        <div className="feature-placeholder">
-                            <h2>👥 Users Management</h2>
-                            <p>Coming Soon - Manage user accounts and roles</p>
+                    <section className="users-section">
+                        <div className="section-header">
+                            <h2>👤 User Management</h2>
+                        </div>
+                        <div className="table-responsive">
+                            <table className="products-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Joined</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {users.map((user) => (
+                                        <tr key={user._id}>
+                                            <td>{user.name || "N/A"}</td>
+                                            <td>{user.email}</td>
+                                            <td>
+                                                <select value={user.role || "user"} onChange={(e) => handleUserRoleChange(user._id, e.target.value)}>
+                                                    <option value="user">User</option>
+                                                    <option value="admin">Admin</option>
+                                                </select>
+                                            </td>
+                                            <td>{new Date(user.createdAt).toLocaleDateString()}</td>
+                                            <td>
+                                                <button className="btn-delete" onClick={() => handleDeleteUser(user)}>Delete</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </section>
                 )}
