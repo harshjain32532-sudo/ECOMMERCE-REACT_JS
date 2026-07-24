@@ -1,0 +1,904 @@
+/* ============================================
+   APPLE DESIGN SYSTEM - ECOMMERCE
+   ============================================
+   A comprehensive CSS framework implementing
+   Apple's design philosophy: reductive, cinematic,
+   product-centric, with binary color rhythm.
+*/
+
+/* ============================================
+   1. CSS VARIABLES - COMPLETE SYSTEM
+   ============================================ */
+
+:root {
+    /* ---- PRIMARY PALETTE ---- */
+    --apple-black: #000000;
+    --apple-light-gray: #f5f5f7;
+    --apple-near-black: #1d1d1f;
+    --apple-white: #ffffff;
+
+    /* ---- INTERACTIVE COLORS ---- */
+    --apple-blue: #0071e3;
+    /* Primary CTA, focus */
+    --apple-link-light: #0066cc;
+    /* Links on light bg */
+    --apple-link-dark: #2997ff;
+    /* Links on dark bg */
+
+    /* ---- TEXT COLORS ---- */
+    --text-white: #ffffff;
+    --text-primary: #1d1d1f;
+    --text-primary-light: rgba(0, 0, 0, 0.8);
+    --text-secondary: rgba(0, 0, 0, 0.48);
+    --text-on-dark: #ffffff;
+
+    /* ---- SURFACE COLORS (Dark contexts) ---- */
+    --dark-surface-1: #272729;
+    --dark-surface-2: #262628;
+    --dark-surface-3: #28282a;
+    --dark-surface-4: #2a2a2d;
+    --dark-surface-5: #242426;
+
+    /* ---- BUTTON STATES ---- */
+    --button-active: #ededf2;
+    --button-default-light: #fafafc;
+    --button-overlay: rgba(210, 210, 215, 0.64);
+    --button-white-32: rgba(255, 255, 255, 0.32);
+
+    /* ---- SHADOW SYSTEM ---- */
+    --shadow-card: rgba(0, 0, 0, 0.22) 3px 5px 30px 0px;
+    --shadow-none: none;
+    --focus-color: #0071e3;
+
+    /* ---- TYPOGRAPHY - Font Families ---- */
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+        "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+    /* ---- TYPOGRAPHY - Display Hero ---- */
+    --type-display-hero-size: 3.50rem;
+    /* 56px */
+    --type-display-hero-weight: 600;
+    --type-display-hero-lh: 1.07;
+    --type-display-hero-ls: -0.28px;
+
+    /* ---- TYPOGRAPHY - Section Heading ---- */
+    --type-section-heading-size: 2.50rem;
+    /* 40px */
+    --type-section-heading-weight: 600;
+    --type-section-heading-lh: 1.10;
+    --type-section-heading-ls: normal;
+
+    /* ---- TYPOGRAPHY - Tile Heading ---- */
+    --type-tile-heading-size: 1.75rem;
+    /* 28px */
+    --type-tile-heading-weight: 400;
+    --type-tile-heading-lh: 1.14;
+    --type-tile-heading-ls: 0.196px;
+
+    /* ---- TYPOGRAPHY - Card Title ---- */
+    --type-card-title-size: 1.31rem;
+    /* 21px */
+    --type-card-title-weight: 700;
+    --type-card-title-lh: 1.19;
+    --type-card-title-ls: 0.231px;
+
+    /* ---- TYPOGRAPHY - Card Sub-heading ---- */
+    --type-card-sub-size: 1.31rem;
+    /* 21px */
+    --type-card-sub-weight: 400;
+    --type-card-sub-lh: 1.19;
+    --type-card-sub-ls: 0.231px;
+
+    /* ---- TYPOGRAPHY - Body ---- */
+    --type-body-size: 1.06rem;
+    /* 17px */
+    --type-body-weight: 400;
+    --type-body-lh: 1.47;
+    --type-body-ls: -0.374px;
+
+    /* ---- TYPOGRAPHY - Body Emphasis ---- */
+    --type-body-emphasis-size: 1.06rem;
+    /* 17px */
+    --type-body-emphasis-weight: 600;
+    --type-body-emphasis-lh: 1.24;
+    --type-body-emphasis-ls: -0.374px;
+
+    /* ---- TYPOGRAPHY - Button ---- */
+    --type-button-size: 1.06rem;
+    /* 17px */
+    --type-button-weight: 400;
+    --type-button-lh: 2.41;
+    --type-button-ls: normal;
+
+    /* ---- TYPOGRAPHY - Link ---- */
+    --type-link-size: 0.88rem;
+    /* 14px */
+    --type-link-weight: 400;
+    --type-link-lh: 1.43;
+    --type-link-ls: -0.224px;
+
+    /* ---- TYPOGRAPHY - Caption ---- */
+    --type-caption-size: 0.88rem;
+    /* 14px */
+    --type-caption-weight: 400;
+    --type-caption-lh: 1.29;
+    --type-caption-ls: -0.224px;
+
+    /* ---- SPACING SCALE ---- */
+    --space-1: 2px;
+    --space-2: 4px;
+    --space-3: 5px;
+    --space-4: 6px;
+    --space-5: 7px;
+    --space-6: 8px;
+    --space-7: 9px;
+    --space-8: 10px;
+    --space-9: 11px;
+    --space-10: 14px;
+    --space-11: 15px;
+    --space-12: 17px;
+    --space-13: 20px;
+    --space-14: 24px;
+
+    /* ---- BORDER RADIUS ---- */
+    --radius-micro: 5px;
+    /* Small containers */
+    --radius-std: 8px;
+    /* Buttons, cards */
+    --radius-comfortable: 11px;
+    /* Search, filters */
+    --radius-large: 12px;
+    /* Feature panels */
+    --radius-pill: 980px;
+    /* CTA links, pills */
+    --radius-circle: 50%;
+    /* Media controls */
+
+    /* ---- CONTAINER WIDTH ---- */
+    --container-max-width: 980px;
+
+    /* ---- TRANSITIONS ---- */
+    --transition-fast: 0.15s ease;
+    --transition-std: 0.3s ease;
+    --transition-slow: 0.5s ease;
+}
+
+/* ============================================
+   2. BASE ELEMENT STYLES
+   ============================================ */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body,
+#root {
+    min-height: 100%;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-body);
+    color: var(--text-primary);
+    background: var(--apple-white);
+    line-height: var(--type-body-lh);
+    letter-spacing: var(--type-body-ls);
+    font-size: var(--type-body-size);
+    font-weight: var(--type-body-weight);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* Remove default browser backgrounds */
+body::before {
+    display: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: var(--font-display);
+    margin: 0;
+    padding: 0;
+}
+
+h1 {
+    font-size: var(--type-display-hero-size);
+    font-weight: var(--type-display-hero-weight);
+    line-height: var(--type-display-hero-lh);
+    letter-spacing: var(--type-display-hero-ls);
+}
+
+h2 {
+    font-size: var(--type-section-heading-size);
+    font-weight: var(--type-section-heading-weight);
+    line-height: var(--type-section-heading-lh);
+    letter-spacing: var(--type-section-heading-ls);
+}
+
+h3 {
+    font-size: var(--type-tile-heading-size);
+    font-weight: var(--type-tile-heading-weight);
+    line-height: var(--type-tile-heading-lh);
+    letter-spacing: var(--type-tile-heading-ls);
+}
+
+h4 {
+    font-size: var(--type-card-title-size);
+    font-weight: var(--type-card-title-weight);
+    line-height: var(--type-card-title-lh);
+    letter-spacing: var(--type-card-title-ls);
+}
+
+h5 {
+    font-size: var(--type-card-sub-size);
+    font-weight: var(--type-card-sub-weight);
+    line-height: var(--type-card-sub-lh);
+    letter-spacing: var(--type-card-sub-ls);
+}
+
+p {
+    margin: 0;
+    padding: 0;
+}
+
+button,
+input,
+textarea,
+select {
+    font-family: var(--font-body);
+}
+
+button {
+    cursor: pointer;
+    border: none;
+    transition: all var(--transition-fast);
+}
+
+input,
+textarea,
+select {
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    background: var(--apple-white);
+    padding: var(--space-6) var(--space-10);
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color var(--transition-fast),
+        box-shadow var(--transition-fast);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+    border-color: var(--apple-blue);
+    box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.1);
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+
+/* ============================================
+   3. BUTTON COMPONENTS
+   ============================================ */
+
+/* Primary Blue CTA Button */
+.btn-primary {
+    background: var(--apple-blue);
+    color: var(--text-white);
+    padding: var(--space-6) var(--space-11);
+    border-radius: var(--radius-std);
+    font-size: var(--type-button-size);
+    font-weight: var(--type-button-weight);
+    line-height: var(--type-button-lh);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-6);
+    transition: background-color var(--transition-fast);
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, var(--apple-blue), #0056b3);
+}
+
+.btn-primary:active {
+    background: var(--button-active);
+    color: var(--apple-blue);
+}
+
+.btn-primary:focus {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+}
+
+/* Primary Dark Button */
+.btn-dark {
+    background: var(--apple-near-black);
+    color: var(--text-white);
+    padding: var(--space-6) var(--space-11);
+    border-radius: var(--radius-std);
+    font-size: var(--type-button-size);
+    font-weight: var(--type-button-weight);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-6);
+}
+
+.btn-dark:hover {
+    opacity: 0.8;
+}
+
+.btn-dark:focus {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+}
+
+/* Pill Link - Signature Apple CTA */
+.btn-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    padding: var(--space-10) var(--space-12);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--apple-link-light);
+    background: transparent;
+    color: var(--apple-link-light);
+    font-size: var(--type-link-size);
+    font-weight: var(--type-link-weight);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-pill:hover {
+    text-decoration: underline;
+    color: var(--apple-blue);
+    border-color: var(--apple-blue);
+}
+
+/* Pill Link on Dark Background */
+.btn-pill-dark {
+    border-color: var(--apple-link-dark);
+    color: var(--apple-link-dark);
+}
+
+.btn-pill-dark:hover {
+    color: var(--apple-white);
+    border-color: var(--apple-white);
+}
+
+/* Search/Filter Button */
+.btn-filter {
+    background: var(--button-default-light);
+    color: var(--text-primary-light);
+    padding: 0 var(--space-10);
+    border-radius: var(--radius-comfortable);
+    border: 3px solid rgba(0, 0, 0, 0.04);
+    font-size: var(--type-body-size);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    transition: all var(--transition-fast);
+}
+
+.btn-filter:hover {
+    border-color: rgba(0, 0, 0, 0.12);
+}
+
+.btn-filter:focus {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+}
+
+/* Media Control (Play/Pause, Carousel) */
+.btn-media {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-circle);
+    background: var(--button-overlay);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-media:hover {
+    background: rgba(210, 210, 215, 0.8);
+}
+
+.btn-media:active {
+    transform: scale(0.9);
+}
+
+.btn-media:focus {
+    background: var(--apple-white);
+    color: var(--text-primary);
+    outline: 2px solid var(--focus-color);
+}
+
+/* ============================================
+   4. CARD & CONTAINER COMPONENTS
+   ============================================ */
+
+/* Product Card */
+.card {
+    background: var(--apple-light-gray);
+    border-radius: var(--radius-std);
+    border: none;
+    overflow: hidden;
+    padding: var(--space-13);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-10);
+}
+
+.card-dark {
+    background: var(--dark-surface-1);
+    color: var(--text-white);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-card);
+}
+
+.card-image {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: var(--radius-std);
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.card-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+.card-title {
+    font-family: var(--font-display);
+    font-size: var(--type-tile-heading-size);
+    font-weight: var(--type-tile-heading-weight);
+    line-height: var(--type-tile-heading-lh);
+    letter-spacing: var(--type-tile-heading-ls);
+}
+
+.card-subtitle {
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-caption-weight);
+    color: var(--text-secondary);
+}
+
+.card-footer {
+    display: flex;
+    gap: var(--space-10);
+    margin-top: var(--space-10);
+}
+
+/* ============================================
+   5. SECTION COMPONENTS
+   ============================================ */
+
+/* Full-width section with cinematic rhythm */
+.section {
+    width: 100%;
+    padding: 120px var(--space-13);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.section-black {
+    background: var(--apple-black);
+    color: var(--text-white);
+}
+
+.section-light {
+    background: var(--apple-light-gray);
+    color: var(--text-primary);
+}
+
+.section-white {
+    background: var(--apple-white);
+    color: var(--text-primary);
+}
+
+.section-container {
+    max-width: var(--container-max-width);
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-13);
+    align-items: center;
+    text-align: center;
+}
+
+/* Hero Section */
+.hero {
+    background: var(--apple-black);
+    color: var(--text-white);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-13);
+    position: relative;
+    overflow: hidden;
+}
+
+.hero-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-13);
+    align-items: center;
+    text-align: center;
+    max-width: var(--container-max-width);
+    z-index: 1;
+}
+
+.hero-image {
+    width: 100%;
+    max-width: 600px;
+    aspect-ratio: 1 / 1;
+    object-fit: contain;
+    margin-top: var(--space-13);
+}
+
+.hero-actions {
+    display: flex;
+    gap: var(--space-10);
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: var(--space-13);
+}
+
+/* ============================================
+   6. NAVIGATION
+   ============================================ */
+
+.nav {
+    position: sticky;
+    top: 0;
+    height: 48px;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space-13);
+    z-index: 1000;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.nav-logo {
+    width: 17px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-links {
+    display: flex;
+    gap: var(--space-13);
+    list-style: none;
+    align-items: center;
+}
+
+.nav-link {
+    color: var(--text-white);
+    font-size: 12px;
+    font-weight: 400;
+    cursor: pointer;
+    position: relative;
+    transition: color var(--transition-fast);
+}
+
+.nav-link:hover::after {
+    content: "";
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--text-white);
+}
+
+.nav-actions {
+    display: flex;
+    gap: var(--space-13);
+    align-items: center;
+}
+
+/* ============================================
+   7. UTILITY CLASSES
+   ============================================ */
+
+/* Typography Utilities */
+.text-display {
+    font-family: var(--font-display);
+    font-size: var(--type-display-hero-size);
+    font-weight: var(--type-display-hero-weight);
+    line-height: var(--type-display-hero-lh);
+    letter-spacing: var(--type-display-hero-ls);
+}
+
+.text-section-heading {
+    font-family: var(--font-display);
+    font-size: var(--type-section-heading-size);
+    font-weight: var(--type-section-heading-weight);
+    line-height: var(--type-section-heading-lh);
+}
+
+.text-tile-heading {
+    font-family: var(--font-display);
+    font-size: var(--type-tile-heading-size);
+    font-weight: var(--type-tile-heading-weight);
+    line-height: var(--type-tile-heading-lh);
+}
+
+.text-body {
+    font-family: var(--font-body);
+    font-size: var(--type-body-size);
+    font-weight: var(--type-body-weight);
+    line-height: var(--type-body-lh);
+    letter-spacing: var(--type-body-ls);
+}
+
+.text-caption {
+    font-family: var(--font-body);
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-caption-weight);
+    line-height: var(--type-caption-lh);
+    letter-spacing: var(--type-caption-ls);
+}
+
+.text-link {
+    color: var(--apple-link-light);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--transition-fast);
+}
+
+.text-link:hover {
+    border-bottom-color: var(--apple-link-light);
+}
+
+/* Color Utilities */
+.text-white {
+    color: var(--text-white);
+}
+
+.text-primary {
+    color: var(--text-primary);
+}
+
+.text-secondary {
+    color: var(--text-secondary);
+}
+
+.bg-black {
+    background: var(--apple-black);
+}
+
+.bg-light {
+    background: var(--apple-light-gray);
+}
+
+.bg-white {
+    background: var(--apple-white);
+}
+
+.bg-blue {
+    background: var(--apple-blue);
+}
+
+/* Spacing Utilities */
+.mt {
+    margin-top: var(--space-13);
+}
+
+.mb {
+    margin-bottom: var(--space-13);
+}
+
+.my {
+    margin-top: var(--space-13);
+    margin-bottom: var(--space-13);
+}
+
+.px {
+    padding-left: var(--space-13);
+    padding-right: var(--space-13);
+}
+
+.py {
+    padding-top: var(--space-13);
+    padding-bottom: var(--space-13);
+}
+
+.gap-sm {
+    gap: var(--space-10);
+}
+
+.gap-md {
+    gap: var(--space-13);
+}
+
+.gap-lg {
+    gap: var(--space-14);
+}
+
+/* Flexbox Utilities */
+.flex {
+    display: flex;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.flex-center {
+    align-items: center;
+    justify-content: center;
+}
+
+.flex-between {
+    justify-content: space-between;
+}
+
+.flex-wrap {
+    flex-wrap: wrap;
+}
+
+/* Shadow Utilities */
+.shadow-card {
+    box-shadow: var(--shadow-card);
+}
+
+.shadow-none {
+    box-shadow: var(--shadow-none);
+}
+
+/* Border Radius Utilities */
+.rounded-sm {
+    border-radius: var(--radius-micro);
+}
+
+.rounded {
+    border-radius: var(--radius-std);
+}
+
+.rounded-md {
+    border-radius: var(--radius-comfortable);
+}
+
+.rounded-lg {
+    border-radius: var(--radius-large);
+}
+
+.rounded-full {
+    border-radius: var(--radius-circle);
+}
+
+.rounded-pill {
+    border-radius: var(--radius-pill);
+}
+
+/* ============================================
+   8. RESPONSIVE DESIGN
+   ============================================ */
+
+@media (max-width: 1070px) {
+    .section {
+        padding: 80px var(--space-10);
+    }
+}
+
+@media (max-width: 834px) {
+    .hero {
+        min-height: 80vh;
+    }
+
+    .hero-content {
+        gap: var(--space-10);
+    }
+
+    .hero-image {
+        max-width: 400px;
+    }
+
+    h1 {
+        font-size: 2.5rem;
+    }
+
+    h2 {
+        font-size: 1.75rem;
+    }
+}
+
+@media (max-width: 640px) {
+    .section {
+        padding: 60px var(--space-8);
+    }
+
+    .hero {
+        min-height: 60vh;
+        padding: var(--space-8);
+    }
+
+    .hero-image {
+        max-width: 280px;
+    }
+
+    h1 {
+        font-size: 1.75rem;
+    }
+
+    .hero-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .btn-primary,
+    .btn-pill {
+        width: 100%;
+    }
+
+    .nav-links {
+        display: none;
+    }
+}
+
+/* ============================================
+   9. ANIMATION & TRANSITIONS
+   ============================================ */
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in {
+    animation: fadeIn var(--transition-std) ease;
+}
+
+.animate-slide-up {
+    animation: slideUp var(--transition-std) ease;
+}

@@ -1,0 +1,199 @@
+/* Profile Page Styles */
+
+:root {
+    --primary-gradient: linear-gradient(135deg, #7747ff 0%, #ff46b6 100%);
+    --primary-color: #7747ff;
+    --secondary-color: #ff46b6;
+    --text-primary: #17072f;
+    --text-secondary: #6d5688;
+    --text-light: #9e88b6;
+    --border-color: rgba(132, 75, 173, 0.16);
+    --bg-light: #f7f0ff;
+    --shadow: 0 2px 8px rgba(119, 71, 255, 0.14);
+}
+
+/* Responsive Typography */
+@media (max-width: 768px) {
+    .profile-title {
+        font-size: 24px !important;
+    }
+
+    .profile-subtitle {
+        font-size: 14px !important;
+    }
+
+    .profile-section-title {
+        font-size: 18px !important;
+    }
+
+    .profile-tabs {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .profile-tab-button {
+        padding: 10px 16px !important;
+        font-size: 13px !important;
+    }
+
+    .profile-two-column {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* Input Focus States */
+input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Button Hover States */
+button {
+    transition: all 0.3s ease;
+}
+
+.profile-save-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(119, 71, 255, 0.3);
+}
+
+.profile-add-button:hover {
+    background: #8b5cff;
+}
+
+.profile-cancel-button:hover {
+    background: #e3dafc;
+}
+
+.profile-delete-button:hover {
+    background: #ffd2de;
+    border-color: #ff4d69;
+
+    /* Order Card Hover */
+    .profile-order-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        border-color: var(--border-color);
+    }
+
+    /* Address Card Hover */
+    .profile-address-card:hover {
+        background: #fff;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        border-color: var(--primary-color);
+    }
+
+    /* Tab Active Animation */
+    .profile-tab-active {
+        animation: slideDown 0.3s ease;
+    }
+
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Message Animation */
+    .profile-message {
+        animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateX(-20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+
+    /* Empty State */
+    .profile-empty-state {
+        padding: 60px 20px;
+        text-align: center;
+    }
+
+    /* Responsive Container */
+    @media (max-width: 1024px) {
+        .profile-container {
+            max-width: 100% !important;
+            padding: 20px 16px !important;
+        }
+    }
+
+    /* Mobile Optimization */
+    @media (max-width: 480px) {
+        .profile-header {
+            padding: 30px 16px !important;
+        }
+
+        .profile-title {
+            font-size: 22px !important;
+        }
+
+        .profile-section {
+            padding: 20px 16px !important;
+        }
+
+        .profile-tabs {
+            margin-bottom: 20px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .profile-tab-button {
+            white-space: nowrap;
+        }
+
+        .profile-form-actions {
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .profile-form-actions button {
+            width: 100%;
+        }
+
+        .profile-addresses-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .profile-addresses-header button {
+            width: 100%;
+        }
+    }
+
+    /* Accessibility */
+    button:focus {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+
+    input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+    }
+
+    /* Print Styles */
+    @media print {
+
+        .profile-header,
+        .profile-tabs {
+            display: none;
+        }
+
+        .profile-order-card {
+            page-break-inside: avoid;
+        }
+    }

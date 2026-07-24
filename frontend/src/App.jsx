@@ -3,14 +3,18 @@ import { useState, useEffect } from "react";
 import Header from "./components/Header.jsx";
 import Home from "./pages/Home.jsx";
 import Cart from "./pages/Cart.jsx";
+import Checkout from "./pages/Checkout.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import ResetPassword from "./pages/ResetPassword.jsx";
 import Admin from "./pages/Admin.jsx";
+import AdminPanel from "./components/AdminPanel.jsx";
 import Orders from "./pages/Orders.jsx";
 import Profile from "./pages/Profile.jsx";
 import Wishlist from "./pages/Wishlist.jsx";
+import SellerChat from "./components/SellerChat.jsx";
+import NotificationCenter from "./components/NotificationCenter.jsx";
 import { getCart, saveCart, getWishlist, addToWishlist, removeFromWishlist, getProfile } from "./api.js";
 
 function App() {
@@ -206,21 +210,25 @@ function App() {
             <Header
                 cartCount={cart.length}
                 wishlistCount={wishlist.length}
-                isLoggedIn={!!token}
+                isLoggedIn={Boolean(token)}
                 isAdmin={userRole === "admin"}
                 onLogout={handleLogout}
             />
             <Routes>
-                <Route path="/" element={<Home addToCart={addToCart} wishlist={wishlist} onToggleWishlist={addToWishlistHandler} />} />
-                <Route path="/cart" element={<Cart cart={cart} removeFromCart={removeFromCart} updateQuantity={updateQuantity} />} />
+                <Route path="/" element={<Home />} />
+                <Route path="/cart" element={<Cart />} />
+                <Route path="/checkout" element={<Checkout />} />
                 <Route path="/login" element={<Login onLogin={handleLogin} />} />
-                <Route path="/register" element={<Register />} />
+                <Route path="/register" element={<Register onLogin={handleLogin} />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password/:token" element={<ResetPassword />} />
+                <Route path="/admin" element={<Admin />} />
+                <Route path="/admin-panel" element={<AdminPanel />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/profile" element={<Profile />} />
-                <Route path="/wishlist" element={<Wishlist wishlist={wishlist} onRemove={removeFromWishlistHandler} addToCart={addToCart} />} />
-                <Route path="/admin" element={<Admin />} />
+                <Route path="/wishlist" element={<Wishlist />} />
+                <Route path="/chat" element={<SellerChat />} />
+                <Route path="/notifications" element={<NotificationCenter />} />
             </Routes>
         </BrowserRouter>
     );

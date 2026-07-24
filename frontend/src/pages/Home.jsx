@@ -1,543 +1,172 @@
 import { useEffect, useState } from "react";
-import { getProducts } from "../api.js";
-import ProductModal from "../components/ProductModal.jsx";
-import DealsSection from "../components/DealsSection.jsx";
-import CategoryFilter from "../components/CategoryFilter.jsx";
-import RecentlyViewed from "../components/RecentlyViewed.jsx";
-import ProductShowcase from "../components/ProductShowcase.jsx";
+import axios from "axios";
+import Hero from "../components/Hero.jsx";
+import ProductCard from "../components/ProductCard.jsx";
+import ProductFilters from "../components/ProductFilters.jsx";
+import Pagination from "../components/Pagination.jsx";
+import Footer from "../components/Footer.jsx";
+import { Link } from "react-router-dom";
+import "../styles/Products.css";
 
-function Home({ addToCart, wishlist = [], onToggleWishlist }) {
-    const [products, setProducts] = useState([]);
+function Home() {
+    const [allProducts, setAllProducts] = useState([]);
     const [filteredProducts, setFilteredProducts] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-    const [selectedProduct, setSelectedProduct] = useState(null);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [hoveredProductId, setHoveredProductId] = useState(null);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [sortOption, setSortOption] = useState("name");
-    const [priceRange, setPriceRange] = useState({ min: 0, max: Infinity });
-    const [showFilters, setShowFilters] = useState(false);
-    const [recentlyViewed, setRecentlyViewed] = useState(() => {
-        const saved = localStorage.getItem("recentlyViewed");
-        return saved ? JSON.parse(saved) : [];
+    const [currentPage, setCurrentPage] = useState(1);
+    const [sortBy, setSortBy] = useState("newest");
+    const [maxPrice, setMaxPrice] = useState(100000);
+    const [filters, setFilters] = useState({
+        categories: [],
+        priceRange: [0, 100000]
     });
 
+    const ITEMS_PER_PAGE = 12;
+
+    // Fetch products
     useEffect(() => {
-        loadProducts();
+        const fetchProducts = async () => {
+            try {
+                setLoading(true);
+                const res = await axios.get("http://localhost:5000/products");
+                const productsData = res.data.map(p => ({
+                    ...p,
+                    rating: Math.floor(Math.random() * 5) + 1,
+                    reviews: Math.floor(Math.random() * 500) + 10,
+                    originalPrice: p.price * 1.2,
+                    category: p.category || "Electronics",
+                    stock: Math.floor(Math.random() * 20) + 1
+                }));
+                setAllProducts(productsData);
+
+                const highestPrice = Math.max(...productsData.map(p => p.price), 100000);
+                setMaxPrice(highestPrice);
+                setFilters(prev => ({ ...prev, priceRange: [0, highestPrice] }));
+            } catch (err) {
+                console.error("Error fetching products:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchProducts();
     }, []);
 
-    const loadProducts = async () => {
-        try {
-            const res = await getProducts();
-            setProducts(res.data);
-            filterAndSortProducts(res.data, searchTerm, sortOption, priceRange);
-        } catch (err) {
-            setError("Failed to load products.");
-        } finally {
-            setLoading(false);
-        }
-    };
+    // Apply filters and sorting
+    useEffect(() => {
+        let result = [...allProducts];
 
-    const filterAndSortProducts = (productList, search, sort, price) => {
-        let filtered = productList.filter(p => {
-            const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
-                p.description.toLowerCase().includes(search.toLowerCase());
-            const matchesPrice = p.price >= price.min && p.price <= price.max;
-            return matchesSearch && matchesPrice;
-        });
-
-        // Sort products
-        if (sort === "name") {
-            filtered.sort((a, b) => a.name.localeCompare(b.name));
-        } else if (sort === "price-low") {
-            filtered.sort((a, b) => a.price - b.price);
-        } else if (sort === "price-high") {
-            filtered.sort((a, b) => b.price - a.price);
-        } else if (sort === "newest") {
-            filtered.reverse();
+        // Apply category filter
+        if (filters.categories.length > 0) {
+            result = result.filter(p => filters.categories.includes(p.category));
         }
 
-        setFilteredProducts(filtered);
-    };
+        // Apply price filter
+        result = result.filter(p => p.price >= filters.priceRange[0] && p.price <= filters.priceRange[1]);
 
-    const handleSearch = (value) => {
-        setSearchTerm(value);
-        filterAndSortProducts(products, value, sortOption, priceRange);
-    };
+        // Apply sorting
+        switch (sortBy) {
+            case "price-low":
+                result.sort((a, b) => a.price - b.price);
+                break;
+            case "price-high":
+                result.sort((a, b) => b.price - a.price);
+                break;
+            case "rating":
+                result.sort((a, b) => b.rating - a.rating);
+                break;
+            case "popular":
+                result.sort((a, b) => b.reviews - a.reviews);
+                break;
+            case "newest":
+            default:
+                result.reverse();
+                break;
+        }
 
-    const handleSort = (value) => {
-        setSortOption(value);
-        filterAndSortProducts(products, searchTerm, value, priceRange);
-    };
+        setFilteredProducts(result);
+        setCurrentPage(1);
+    }, [allProducts, filters, sortBy]);
 
-    const handlePriceFilter = (min, max) => {
-        const newRange = { min, max };
-        setPriceRange(newRange);
-        filterAndSortProducts(products, searchTerm, sortOption, newRange);
-    };
+    // Pagination
+    const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const displayedProducts = filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
-    const handleQuickView = (product) => {
-        setSelectedProduct(product);
-        setIsModalOpen(true);
-        // Add to recently viewed
-        const viewed = [product, ...recentlyViewed.filter(p => p._id !== product._id)].slice(0, 10);
-        setRecentlyViewed(viewed);
-        localStorage.setItem("recentlyViewed", JSON.stringify(viewed));
-    };
+    // Get unique categories
+    const categories = [...new Set(allProducts.map(p => p.category))];
 
-    const handleCloseModal = () => {
-        setIsModalOpen(false);
-        setSelectedProduct(null);
-    };
+    const handleAddToCart = (product) => {
+        const cart = JSON.parse(localStorage.getItem("cart") || "[]");
+        const existingItem = cart.find(item => item._id === product._id);
 
-    const isProductInWishlist = (productId) => {
-        return wishlist.some(w => w.productId === productId || w._id === productId);
-    };
+        if (existingItem) {
+            existingItem.quantity += 1;
+        } else {
+            cart.push({ ...product, quantity: 1 });
+        }
 
-    const getMaxPrice = () => {
-        return products.length > 0 ? Math.max(...products.map(p => p.price)) : 10000;
+        localStorage.setItem("cart", JSON.stringify(cart));
+        alert(`${product.name} added to cart!`);
     };
 
     return (
-        <div style={styles.container}>
-            <h1 style={styles.title}>🏪 Welcome to Our Store</h1>
+        <div>
+            <Hero />
 
-            {/* Search & Filter Section */}
-            <div style={styles.searchFilterSection}>
-                <div style={styles.searchBox}>
-                    <input
-                        type="text"
-                        placeholder="🔍 Search products..."
-                        value={searchTerm}
-                        onChange={(e) => handleSearch(e.target.value)}
-                        style={styles.searchInput}
-                    />
+
+            <div className="products-container">
+                <div className="products-header">
+                    <h2 className="products-title">Shop Our Collection</h2>
+                    <div className="products-count">
+                        {filteredProducts.length} products found
+                    </div>
                 </div>
 
-                <button
-                    onClick={() => setShowFilters(!showFilters)}
-                    style={{
-                        ...styles.filterToggleBtn,
-                        background: showFilters ? "linear-gradient(135deg, #6a11cb, #2575fc)" : "#f5f5f5",
-                        color: showFilters ? "#fff" : "#333",
-                    }}
-                >
-                    ⚙️ {showFilters ? "Hide" : "Show"} Filters
-                </button>
+                <div className="products-layout">
+                    <ProductFilters
+                        categories={categories}
+                        maxPrice={maxPrice}
+                        onFilterChange={setFilters}
+                        onSortChange={setSortBy}
+                        currentFilters={filters}
+                    />
+
+                    <div className="products-grid-wrapper">
+                        {loading ? (
+                            <div className="loading-state">Loading products...</div>
+                        ) : displayedProducts.length > 0 ? (
+                            <div className="products-grid">
+                                {displayedProducts.map(product => (
+                                    <ProductCard
+                                        key={product._id}
+                                        product={product}
+                                        onAddToCart={handleAddToCart}
+                                        onViewDetails={() => console.log(product)}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="empty-state">
+                                <div className="empty-state-icon">📭</div>
+                                <div className="empty-state-text">
+                                    No products found. Try adjusting your filters.
+                                </div>
+                            </div>
+                        )}
+
+                        {totalPages > 1 && (
+                            <Pagination
+                                currentPage={currentPage}
+                                totalPages={totalPages}
+                                onPageChange={setCurrentPage}
+                            />
+                        )}
+                    </div>
+                </div>
             </div>
 
-            {/* Filters Panel */}
-            {showFilters && (
-                <div style={styles.filterPanel}>
-                    <div style={styles.filterGroup}>
-                        <label style={styles.filterLabel}>Sort By:</label>
-                        <select
-                            value={sortOption}
-                            onChange={(e) => handleSort(e.target.value)}
-                            style={styles.filterSelect}
-                        >
-                            <option value="name">Product Name (A-Z)</option>
-                            <option value="price-low">Price: Low to High</option>
-                            <option value="price-high">Price: High to Low</option>
-                            <option value="newest">Newest First</option>
-                        </select>
-                    </div>
-
-                    <div style={styles.filterGroup}>
-                        <label style={styles.filterLabel}>Price Range:</label>
-                        <div style={styles.priceInputGroup}>
-                            <input
-                                type="number"
-                                placeholder="Min"
-                                min="0"
-                                max={getMaxPrice()}
-                                value={priceRange.min === 0 ? '' : priceRange.min}
-                                onChange={(e) => handlePriceFilter(e.target.value ? parseInt(e.target.value) : 0, priceRange.max)}
-                                style={styles.priceInput}
-                            />
-                            <span style={styles.priceSeparator}>-</span>
-                            <input
-                                type="number"
-                                placeholder="Max"
-                                min="0"
-                                max={getMaxPrice()}
-                                value={priceRange.max === Infinity ? '' : priceRange.max}
-                                onChange={(e) => handlePriceFilter(priceRange.min, e.target.value ? parseInt(e.target.value) : Infinity)}
-                                style={styles.priceInput}
-                            />
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {error && <div style={styles.error}>{error}</div>}
-
-            {/* Results Count */}
-            {!loading && (
-                <p style={styles.resultsCount}>
-                    Found <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'product' : 'products'}
-                </p>
-            )}
-
-            {/* Loading State */}
-            {loading ? (
-                <div style={styles.loadingContainer}>
-                    <div style={styles.spinner}></div>
-                    <p>Loading products...</p>
-                </div>
-            ) : filteredProducts.length === 0 ? (
-                <div style={styles.emptyState}>
-                    <p style={styles.emptyIcon}>🔍</p>
-                    <p>No products found. Try adjusting your search or filters.</p>
-                </div>
-            ) : (
-                <div style={styles.grid}>
-                    {filteredProducts.map((p, idx) => (
-                        <div
-                            key={p._id}
-                            onMouseEnter={() => setHoveredProductId(p._id)}
-                            onMouseLeave={() => setHoveredProductId(null)}
-                            style={{
-                                ...styles.card,
-                                transform: hoveredProductId === p._id ? "translateY(-8px) scale(1.02)" : "translateY(0)",
-                                boxShadow: hoveredProductId === p._id ? "0 20px 42px rgba(85, 48, 118, 0.18)" : styles.card.boxShadow,
-                                animation: `fadeIn 0.5s ease ${idx * 0.05}s both`,
-                            }}
-                        >
-                            {p.stock <= 0 && <div style={styles.outOfStock}>Out of Stock</div>}
-                            {p.image && (
-                                <img src={p.image} alt={p.name} style={styles.image} />
-                            )}
-                            <h3 style={styles.productName}>{p.name}</h3>
-                            <p style={styles.price}>₹{p.price}</p>
-                            <p style={styles.description}>{p.description}</p>
-                            <p style={styles.stock}>📦 Stock: {p.stock}</p>
-                            <div style={styles.buttonGroup}>
-                                <button
-                                    onClick={() => handleQuickView(p)}
-                                    style={styles.quickViewButton}
-                                    disabled={p.stock <= 0}
-                                >
-                                    👁️ Quick View
-                                </button>
-                                <button
-                                    onClick={() => addToCart(p)}
-                                    style={styles.button}
-                                    disabled={p.stock <= 0}
-                                >
-                                    Add to Cart
-                                </button>
-                                <button
-                                    onClick={() => onToggleWishlist(p)}
-                                    style={{
-                                        ...styles.secondaryButton,
-                                        background: isProductInWishlist(p._id) ? "#e74c3c" : "#f5f5f5",
-                                        color: isProductInWishlist(p._id) ? "#fff" : "#333",
-                                    }}
-                                >
-                                    {isProductInWishlist(p._id) ? "❤️ Remove" : "🤍 Add"}
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            <ProductModal
-                isOpen={isModalOpen}
-                product={selectedProduct}
-                onClose={handleCloseModal}
-                onAddToCart={addToCart}
-                onToggleWishlist={onToggleWishlist}
-                isInWishlist={selectedProduct ? isProductInWishlist(selectedProduct._id) : false}
-            />
-
-            {/* Recently Viewed Products */}
-            {recentlyViewed.length > 0 && (
-                <RecentlyViewed
-                    products={recentlyViewed}
-                    onProductClick={handleQuickView}
-                    onAddToCart={addToCart}
-                    onToggleWishlist={onToggleWishlist}
-                    wishlist={wishlist}
-                />
-            )}
-
-            {/* Featured Deals Section */}
-            <DealsSection
-                products={products.slice(0, 8)}
-                onProductClick={handleQuickView}
-                onAddToCart={addToCart}
-            />
-
-            {/* Product Showcase */}
-            <ProductShowcase
-                products={products.slice(8, 16)}
-                onProductClick={handleQuickView}
-            />
+            <Footer />
         </div>
     );
 }
-
-const styles = {
-    container: {
-        maxWidth: 1200,
-        margin: "0 auto",
-        padding: 20,
-        minHeight: "100vh",
-        background: "radial-gradient(circle at top left, #ffebf8 0%, transparent 40%), linear-gradient(180deg, #f3f9ff 0%, #ffffff 40%, #e8f5ff 100%)",
-        animation: "fadeIn 0.6s ease",
-    },
-    title: {
-        fontSize: 42,
-        margin: "0 0 12px",
-        color: "#3e2a73",
-        textShadow: "0 2px 18px rgba(63, 43, 91, 0.16)",
-        animation: "slideInLeft 0.6s ease",
-    },
-    searchFilterSection: {
-        display: "flex",
-        gap: 16,
-        marginBottom: 24,
-        flexWrap: "wrap",
-        alignItems: "center",
-        animation: "slideInLeft 0.6s ease 0.1s both",
-    },
-    searchBox: {
-        flex: 1,
-        minWidth: 250,
-    },
-    searchInput: {
-        width: "100%",
-        padding: "14px 18px",
-        fontSize: 15,
-        border: "2px solid #e0e0e0",
-        borderRadius: 12,
-        background: "#fff",
-        color: "#333",
-        transition: "all 0.3s ease",
-        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
-        outline: "none",
-    },
-    filterToggleBtn: {
-        padding: "12px 24px",
-        borderRadius: 12,
-        border: "none",
-        cursor: "pointer",
-        fontWeight: 600,
-        transition: "all 0.3s ease",
-        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
-    },
-    filterPanel: {
-        background: "white",
-        border: "2px solid rgba(147, 85, 204, 0.16)",
-        borderRadius: 16,
-        padding: 24,
-        marginBottom: 24,
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-        gap: 20,
-        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.1)",
-        animation: "slideInDown 0.4s ease",
-    },
-    filterGroup: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-    },
-    filterLabel: {
-        fontWeight: 600,
-        color: "#333",
-        fontSize: 14,
-    },
-    filterSelect: {
-        padding: "10px 12px",
-        borderRadius: 8,
-        border: "2px solid #e0e0e0",
-        background: "#fff",
-        color: "#333",
-        cursor: "pointer",
-        fontSize: 14,
-        transition: "all 0.3s ease",
-        outline: "none",
-    },
-    priceInputGroup: {
-        display: "flex",
-        gap: 8,
-        alignItems: "center",
-    },
-    priceInput: {
-        flex: 1,
-        padding: "10px 12px",
-        borderRadius: 8,
-        border: "2px solid #e0e0e0",
-        fontSize: 14,
-        color: "#333",
-        transition: "all 0.3s ease",
-        outline: "none",
-    },
-    priceSeparator: {
-        color: "#999",
-        fontWeight: 600,
-    },
-    resultsCount: {
-        fontSize: 14,
-        color: "#666",
-        marginBottom: 16,
-        animation: "fadeIn 0.4s ease",
-    },
-    loadingContainer: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        minHeight: 400,
-        gap: 16,
-    },
-    spinner: {
-        width: 50,
-        height: 50,
-        border: "4px solid rgba(0, 0, 0, 0.1)",
-        borderTopColor: "#2575fc",
-        borderRadius: "50%",
-        animation: "spin 1s linear infinite",
-    },
-    emptyState: {
-        textAlign: "center",
-        padding: 60,
-        borderRadius: 16,
-        background: "linear-gradient(135deg, rgba(147, 85, 204, 0.1), rgba(37, 117, 252, 0.1))",
-        animation: "fadeIn 0.5s ease",
-    },
-    emptyIcon: {
-        fontSize: 64,
-        marginBottom: 16,
-        animation: "bounce 2s ease-in-out infinite",
-    },
-    grid: {
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-        gap: 26,
-        marginTop: 24,
-    },
-    card: {
-        borderRadius: 24,
-        padding: 22,
-        background: "linear-gradient(180deg, #ffffff 0%, #f4ebff 100%)",
-        boxShadow: "0 18px 40px rgba(70, 42, 132, 0.12)",
-        border: "1px solid rgba(147, 85, 204, 0.16)",
-        transition: "transform 0.25s ease, box-shadow 0.25s ease",
-        cursor: "pointer",
-        position: "relative",
-        overflow: "hidden",
-    },
-    outOfStock: {
-        position: "absolute",
-        top: 12,
-        right: 12,
-        background: "#e74c3c",
-        color: "white",
-        padding: "8px 12px",
-        borderRadius: 8,
-        fontSize: 12,
-        fontWeight: 600,
-        zIndex: 10,
-    },
-    productName: {
-        fontSize: 18,
-        fontWeight: 700,
-        color: "#2c3e50",
-        marginBottom: 8,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-    },
-    buttonGroup: {
-        display: "flex",
-        gap: 10,
-        flexWrap: "wrap",
-        marginTop: 14,
-    },
-    quickViewButton: {
-        flex: 1,
-        minWidth: 100,
-        padding: 12,
-        background: "linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%)",
-        color: "#fff",
-        border: "none",
-        borderRadius: 14,
-        cursor: "pointer",
-        fontSize: 14,
-        fontWeight: "700",
-        transition: "transform 0.2s, background 0.2s, opacity 0.2s",
-        boxShadow: "0 12px 22px rgba(155, 89, 182, 0.22)",
-    },
-    button: {
-        flex: 1,
-        minWidth: 120,
-        padding: 12,
-        background: "linear-gradient(135deg, #35aee3 0%, #2a80e6 100%)",
-        color: "#fff",
-        border: "none",
-        borderRadius: 14,
-        cursor: "pointer",
-        fontSize: 14,
-        fontWeight: "700",
-        transition: "transform 0.2s, background 0.2s, opacity 0.2s",
-        boxShadow: "0 12px 22px rgba(52, 152, 219, 0.22)",
-    },
-    secondaryButton: {
-        flex: 1,
-        minWidth: 100,
-        padding: 12,
-        background: "#ffffff",
-        color: "#333",
-        border: "1px solid rgba(142, 68, 173, 0.24)",
-        borderRadius: 14,
-        cursor: "pointer",
-        fontSize: 14,
-        fontWeight: "700",
-        transition: "transform 0.2s, background 0.2s, color 0.2s",
-    },
-    image: {
-        width: "100%",
-        height: 220,
-        objectFit: "contain",
-        objectPosition: "center",
-        backgroundColor: "#f2f4ff",
-        borderRadius: 16,
-        marginBottom: 14,
-        transition: "transform 0.3s ease",
-    },
-    price: {
-        fontSize: 22,
-        fontWeight: "bold",
-        color: "#2c3e50",
-        margin: "10px 0 6px",
-    },
-    description: {
-        fontSize: 13,
-        color: "#5a5a79",
-        margin: "8px 0",
-        lineHeight: 1.6,
-        minHeight: 54,
-    },
-    stock: {
-        fontSize: 13,
-        color: "#7f8c8d",
-        margin: "8px 0",
-        fontWeight: 500,
-    },
-    error: {
-        color: "#9c1b32",
-        padding: 14,
-        background: "#ffe3e6",
-        borderRadius: 12,
-        border: "1px solid #f2c1cc",
-        marginTop: 12,
-        animation: "slideInDown 0.4s ease",
-    },
-};
 
 export default Home;

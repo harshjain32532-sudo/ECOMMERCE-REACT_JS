@@ -1,0 +1,319 @@
+.notification-center {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.nc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.nc-header h1 {
+    margin: 0;
+    color: #333;
+    font-size: 24px;
+}
+
+.nc-tabs {
+    display: flex;
+    gap: 10px;
+    background: white;
+    padding: 10px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    margin-bottom: 20px;
+}
+
+.nc-tab {
+    flex: 1;
+    padding: 12px 20px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-weight: 600;
+    color: #666;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+}
+
+.nc-tab:hover {
+    background: #f0f0f0;
+}
+
+.nc-tab.active {
+    background: #667eea;
+    color: white;
+}
+
+.nc-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #999;
+}
+
+.empty-icon {
+    font-size: 60px;
+    margin-bottom: 20px;
+}
+
+.notifications-section {
+    padding: 20px;
+}
+
+.notifications-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.notification-item {
+    display: flex;
+    gap: 15px;
+    padding: 15px;
+    background: #f9f9f9;
+    border-radius: 8px;
+    border-left: 4px solid #e0e0e0;
+    transition: all 0.3s ease;
+}
+
+.notification-item.unread {
+    background: #f0f4ff;
+    border-left-color: #667eea;
+}
+
+.notification-item:hover {
+    background: #f5f5f5;
+}
+
+.notification-icon {
+    font-size: 28px;
+    min-width: 40px;
+    text-align: center;
+}
+
+.notification-body {
+    flex: 1;
+}
+
+.notification-body h3 {
+    margin: 0 0 8px 0;
+    color: #333;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.notification-body p {
+    margin: 0 0 8px 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.notification-time {
+    display: block;
+    color: #999;
+    font-size: 12px;
+}
+
+.notification-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    font-size: 13px;
+}
+
+.btn-secondary {
+    background: #e0e0e0;
+    color: #333;
+}
+
+.btn-secondary:hover {
+    background: #d0d0d0;
+}
+
+.btn-danger {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #c0392b;
+}
+
+.btn-primary {
+    background: #667eea;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #5568d3;
+}
+
+.btn-sm {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.preferences-section {
+    padding: 30px;
+}
+
+.preference-group {
+    margin-bottom: 30px;
+}
+
+.preference-group h2 {
+    color: #333;
+    font-size: 18px;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.preference-option {
+    margin-bottom: 15px;
+}
+
+.preference-option label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    color: #555;
+    font-weight: 500;
+}
+
+.preference-option input[type="checkbox"],
+.preference-option input[type="radio"] {
+    margin-right: 12px;
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
+.quiet-hours-toggle {
+    margin-bottom: 15px;
+}
+
+.quiet-hours-inputs {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 8px;
+    display: flex;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.quiet-hours-inputs label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: #555;
+    font-weight: 500;
+    flex: 1;
+}
+
+.quiet-hours-inputs input {
+    padding: 8px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+}
+
+.frequency-selector {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.frequency-selector label {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    background: #f9f9f9;
+    border-radius: 8px;
+    border: 2px solid #e0e0e0;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.frequency-selector label:hover {
+    border-color: #667eea;
+    background: #f0f4ff;
+}
+
+.frequency-selector input[type="radio"] {
+    margin-right: 10px;
+}
+
+.frequency-label {
+    font-weight: 500;
+    color: #555;
+}
+
+.preferences-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px solid #e0e0e0;
+}
+
+@media (max-width: 768px) {
+    .notification-center {
+        padding: 10px;
+    }
+
+    .nc-header {
+        flex-direction: column;
+        gap: 15px;
+        align-items: flex-start;
+    }
+
+    .notification-item {
+        flex-wrap: wrap;
+    }
+
+    .notification-actions {
+        width: 100%;
+        order: 3;
+    }
+
+    .quiet-hours-inputs {
+        flex-direction: column;
+    }
+
+    .frequency-selector {
+        grid-template-columns: 1fr;
+    }
+
+    .preferences-section {
+        padding: 15px;
+    }
+}
